@@ -92,6 +92,15 @@
   .tag.cnt{background:#eef1f2;color:var(--muted)}
   .empty{color:var(--muted);font-size:14px;text-align:center;padding:34px 10px}
 
+  /* 振り返りスポットライト */
+  .spotlight{cursor:pointer}
+  .spotlight h3{display:flex;align-items:center;justify-content:space-between}
+  .sp-name{font-size:16px;font-weight:600}
+  .sp-name .rd{font-size:12px;color:var(--muted);font-weight:400;margin-left:6px}
+  .sp-meta{font-size:12px;color:var(--muted);margin-top:2px}
+  .sp-quote{margin-top:10px;font-size:14px;line-height:1.7;padding:11px 13px;background:var(--accent-soft);border-radius:10px;color:var(--ink)}
+  .btn-sm{border:1px solid var(--line);background:var(--surface);color:var(--accent);border-radius:999px;padding:6px 12px;font-size:12px;font-family:inherit;cursor:pointer}
+
   /* 詳細 */
   .sheet{
     position:fixed;inset:0;background:var(--bg);z-index:20;overflow-y:auto;display:none;
@@ -179,6 +188,11 @@
 
 <!-- ========== 記録 ========== -->
 <section class="view active" id="v-record"><div class="wrap">
+  <div class="box spotlight" id="spotlight" style="display:none">
+    <h3>ふと思い出す<button class="btn-sm" id="sp-shuffle">🔀 別の人を見る</button></h3>
+    <div id="sp-body"></div>
+  </div>
+
   <div class="label">文字起こし・記事などを、そのまま貼ってください</div>
   <textarea id="raw" placeholder="ポッドキャストの文字起こしや、記事の本文を貼り付け"></textarea>
 
@@ -210,6 +224,21 @@
     <div class="row"><button class="primary" style="margin-top:0" id="btn-savekey">保存する</button></div>
     <span class="saved" id="gsaved">保存しました</span>
     <div class="hint">キーはこの端末の中だけに保存されます。スマホとPCで別々に入れてください。</div>
+  </div>
+  <div class="set-row">
+    <div class="label">PCで開く</div>
+    <div class="hint">このURLをPCのブラウザで開き、同じメールアドレスでログインすると、スマホと同じ人物・発言が見られます。</div>
+    <div class="row">
+      <input class="txt" id="share-url" readonly value="https://foggydock.github.io/expert-log/">
+      <button class="primary" id="btn-copy-url" style="margin-top:0;width:auto;padding:11px 16px;white-space:nowrap">コピー</button>
+    </div>
+    <span class="saved" id="url-copied">コピーしました</span>
+  </div>
+  <div class="set-row">
+    <div class="label">保存済みの発言を整形</div>
+    <div class="hint">これまでに保存した発言を、話し言葉から整った書き言葉へ一括で整え直します（元の文章は上書きされます）。</div>
+    <button class="primary" id="btn-cleanup" style="background:var(--surface);color:var(--accent);border:1px solid var(--line)">発言を整形する</button>
+    <div class="result" id="cleanup-result"></div>
   </div>
   <div class="set-row">
     <div class="label">アカウント</div>
@@ -353,7 +382,8 @@ ${existingList}
 - birth_year: 生まれた年（西暦）。age: 年齢。どちらも分からなければ null。推測しないこと。
 - fields: 専門分野を短い語で2〜4個（例：["ベーシックインカム","社会政策"]）。
 - profile: 経歴・人物像を3〜5文で。
-- statements: この人が【テキスト】の中で述べていた主張・意見を、1件1文で最大6件。本文に無い発言を作らないこと。
+- statements: この人が【テキスト】の中で述べていた主張・意見を、1件1文で最大6件。
+  内容は本文にある発言に忠実に、意味や主張を変えないこと。ただし文体は「、あの」「〜なんですよね」「えー」のような話し言葉・フィラー・言い淀みを取り除き、読んでそのまま趣旨が伝わる整った書き言葉（である調 or ですます調のどちらか一貫した文体）に整えて書くこと。本文に無い発言を作らないこと。
 - ai_filled: 【テキスト】には書かれておらず、あなた自身の知識で補った項目名だけを並べる。
   使える項目名は "title","affiliation","birth_year","age","fields","profile" のみ。
   本文から読み取れた項目は、ここに入れないこと。
@@ -553,7 +583,11 @@ function fieldRow(k, v, aiKeys, key){
 
 async function openPerson(id){
   openId = id;
-  const p = people.find(x=>x.id===id);
+  let p = people.find(x=>x.id===id);
+  if(!p){
+    try{ p = await dbRetry(()=>supa.from('exp_people').select('*').eq('id',id).single(), '人物の取得'); }
+    catch(e){ return; }
+  }
   if(!p) return;
   $('#sh-title').textContent = p.name;
   $('#sh-body').innerHTML = '<div class="empty">読み込み中…</div>';
@@ -597,6 +631,111 @@ async function openPerson(id){
   }
 }
 
+/* ---------- 振り返りスポットライト ---------- */
+let spotlightPool = [];
+let spotlightLoaded = false;
+
+async function loadSpotlight(){
+  try{
+    const rows = await dbRetry(()=>supa.from('exp_notes').select('text,person_id,exp_people(name,reading,title,affiliation)'), '振り返りの取得');
+    spotlightPool = (rows||[]).filter(r => r.exp_people && norm(r.text));
+    spotlightLoaded = true;
+    showRandomSpotlight();
+  }catch(e){
+    $('#spotlight').style.display = 'none';
+  }
+}
+
+function showRandomSpotlight(){
+  if(!spotlightPool.length){ $('#spotlight').style.display = 'none'; return; }
+  const r = spotlightPool[Math.floor(Math.random()*spotlightPool.length)];
+  const p = r.exp_people;
+  const meta = [p.title, p.affiliation].filter(Boolean).join('／');
+  $('#sp-body').innerHTML = `<div class="sp-name">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
+    ${meta?`<div class="sp-meta">${esc(meta)}</div>`:''}
+    <div class="sp-quote">「${esc(r.text)}」</div>`;
+  $('#spotlight').dataset.pid = r.person_id;
+  $('#spotlight').style.display = 'block';
+}
+
+$('#spotlight').onclick = ()=>{
+  const pid = $('#spotlight').dataset.pid;
+  if(pid) openPerson(pid);
+};
+$('#sp-shuffle').onclick = (e)=>{ e.stopPropagation(); showRandomSpotlight(); };
+
+/* ---------- PCで開く ---------- */
+$('#btn-copy-url').onclick = async ()=>{
+  try{
+    await navigator.clipboard.writeText($('#share-url').value);
+    const s = $('#url-copied'); s.classList.add('show'); setTimeout(()=>s.classList.remove('show'),1800);
+  }catch(e){
+    $('#share-url').select();
+    document.execCommand('copy');
+  }
+};
+
+/* ---------- 保存済みの発言を整形 ---------- */
+const CLEANUP_SCHEMA = {
+  type:'object',
+  properties:{ statements:{ type:'array', items:{type:'string'} } },
+  required:['statements']
+};
+
+function buildCleanupPrompt(list){
+  return `以下は、ある人物の発言を書き起こしたものです。それぞれ、意味や主張を変えずに、話し言葉のフィラーや言い淀み（「あの」「えー」「〜なんですよね」など）を取り除き、読んでそのまま趣旨が伝わる整った書き言葉（である調かですます調のどちらかで統一）に直してください。
+件数と順番は変えないこと。出力はJSONのみ。
+
+【発言】
+${list.map((t,i)=>`${i+1}. ${t}`).join('\n')}`;
+}
+
+$('#btn-cleanup').onclick = async ()=>{
+  if(!localStorage.getItem('gemini_key')){
+    const r = $('#cleanup-result'); r.textContent = '先にGemini APIキーを保存してください。'; r.classList.add('show','err'); return;
+  }
+  if(!confirm('保存済みの発言をすべて書き言葉に整形し直します。元の文章は上書きされ、元に戻せません。よろしいですか？')) return;
+
+  const btn = $('#btn-cleanup'); btn.disabled = true;
+  const res = $('#cleanup-result'); res.classList.remove('err'); res.classList.add('show');
+  res.textContent = '整形中…';
+
+  try{
+    const notes = await dbRetry(()=>supa.from('exp_notes').select('id,person_id,text'), '発言の取得');
+    const byPerson = {};
+    notes.forEach(n => { (byPerson[n.person_id] = byPerson[n.person_id] || []).push(n); });
+
+    let done = 0, failed = 0;
+    const total = notes.length;
+    for(const pid of Object.keys(byPerson)){
+      const group = byPerson[pid];
+      try{
+        const r = await geminiCall(buildCleanupPrompt(group.map(n=>n.text)), CLEANUP_SCHEMA);
+        const json = await r.json();
+        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const parsed = JSON.parse(text);
+        const arr = parsed.statements || [];
+        for(let i=0;i<group.length;i++){
+          const nv = norm(arr[i]);
+          if(nv) await dbRetry(()=>supa.from('exp_notes').update({text:nv}).eq('id',group[i].id), '発言の更新');
+          done++;
+        }
+      }catch(e){
+        failed += group.length;
+      }
+      res.textContent = `整形中…（${done+failed}/${total}）`;
+    }
+    res.textContent = failed ? `完了：${done}件を整形しました（${failed}件は失敗）` : `完了：${done}件を整形しました`;
+    res.classList.toggle('err', done===0 && failed>0);
+    spotlightLoaded = false;
+    people = [];
+  }catch(e){
+    res.textContent = '失敗しました：'+e.message; res.classList.add('err');
+  }finally{
+    btn.disabled = false;
+  }
+};
+
 /* ---------- ログイン ---------- */
 const authScreen = $('#auth');
 function authMsg(m, ok){ const el=$('#au-msg'); el.textContent=m; el.classList.toggle('ok', !!ok); }
@@ -607,6 +746,7 @@ supa.auth.onAuthStateChange((_e, session)=>{
     localStorage.setItem('last_email', session.user.email||'');
     authScreen.classList.add('hide');
     $('#who').textContent = 'ログイン中：'+(session.user.email||'');
+    if(!spotlightLoaded) loadSpotlight();
   }else{
     currentUid = null;
     authScreen.classList.remove('hide');
@@ -619,6 +759,7 @@ supa.auth.onAuthStateChange((_e, session)=>{
     currentUid = data.session.user.id;
     authScreen.classList.add('hide');
     $('#who').textContent = 'ログイン中：'+(data.session.user.email||'');
+    if(!spotlightLoaded) loadSpotlight();
   }else{
     authScreen.classList.remove('hide');
   }
