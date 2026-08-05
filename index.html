@@ -592,21 +592,9 @@ function fieldRow(k, v, aiKeys, key){
   return `<div class="field"><div class="k">${k}</div><div class="v">${esc(String(v))}${ai}</div></div>`;
 }
 
-async function openPerson(id){
-  openId = id;
-  let p = people.find(x=>x.id===id);
-  if(!p){
-    try{ p = await dbRetry(()=>supa.from('exp_people').select('*').eq('id',id).single(), '人物の取得'); }
-    catch(e){ return; }
-  }
-  if(!p) return;
-  $('#sh-title').textContent = p.name;
-  $('#sh-body').innerHTML = '<div class="empty">読み込み中…</div>';
-  $('#sheet').classList.add('show');
-  window.scrollTo(0,0);
-
+function renderProfileView(p){
   const ai = norm(p.ai_filled).split(',').filter(Boolean);
-  let html = `<div class="box"><h3>プロフィール</h3>
+  let html = `<div class="box" id="profile-box"><h3>プロフィール<button class="btn-sm" id="btn-edit-profile">編集</button></h3>
     ${fieldRow('よみ', p.reading, ai, 'reading')}
     ${fieldRow('肩書', p.title, ai, 'title')}
     ${fieldRow('所属', p.affiliation, ai, 'affiliation')}
@@ -621,6 +609,95 @@ async function openPerson(id){
   if(ai.length){
     html += `<div class="hint" style="margin:-4px 2px 12px">「AIが補足」は、貼った文章には書かれておらず、AIが自分の知識で埋めた項目です。確かめてから使ってください。</div>`;
   }
+  return html;
+}
+
+function renderProfileEdit(p){
+  return `<div class="box" id="profile-box"><h3>プロフィールを編集</h3>
+    <div class="label">よみ</div><input class="txt" id="ed-reading" value="${esc(p.reading||'')}">
+    <div class="label">肩書</div><input class="txt" id="ed-title" value="${esc(p.title||'')}">
+    <div class="label">所属</div><input class="txt" id="ed-affiliation" value="${esc(p.affiliation||'')}">
+    <div class="row">
+      <input class="txt" id="ed-age" placeholder="年齢" inputmode="numeric" value="${p.age!=null?p.age:''}">
+      <input class="txt" id="ed-birth" placeholder="生年（西暦）" inputmode="numeric" value="${p.birth_year!=null?p.birth_year:''}">
+    </div>
+    <div class="label" style="margin-top:10px">専門（、区切りで複数）</div>
+    <input class="txt" id="ed-fields" value="${esc(norm(p.fields).split(',').filter(Boolean).join('、'))}">
+    <div class="label" style="margin-top:10px">人物像</div>
+    <textarea id="ed-profile" style="min-height:90px">${esc(p.profile||'')}</textarea>
+    <div class="row">
+      <button class="primary" id="btn-save-profile" style="margin-top:0">保存</button>
+      <button class="primary" id="btn-cancel-profile" style="margin-top:0;background:var(--surface);color:var(--accent);border:1px solid var(--line)">キャンセル</button>
+    </div>
+  </div>`;
+}
+
+function wireProfileView(p){
+  const btn = document.getElementById('btn-edit-profile');
+  if(!btn) return;
+  btn.onclick = ()=>{
+    // プロフィールと人物像の両ボックスを、編集フォーム1つに差し替える
+    const boxes = [...document.querySelectorAll('#sh-body .box')];
+    const profileBox = document.getElementById('profile-box');
+    const idx = boxes.indexOf(profileBox);
+    const extra = boxes.slice(idx+1).filter(b => b.querySelector('h3') && b.querySelector('h3').textContent.startsWith('人物像'));
+    profileBox.outerHTML = renderProfileEdit(p);
+    extra.forEach(b => b.remove());
+    wireProfileEdit(p);
+  };
+}
+
+function wireProfileEdit(p){
+  document.getElementById('btn-cancel-profile').onclick = ()=>{
+    document.getElementById('profile-box').outerHTML = renderProfileView(p);
+    wireProfileView(p);
+  };
+  document.getElementById('btn-save-profile').onclick = async ()=>{
+    const btn = document.getElementById('btn-save-profile'); btn.disabled = true;
+    const numOrNull = v => { v = norm(v); return v ? parseInt(v,10) : null; };
+    const patch = {
+      reading: norm($('#ed-reading').value) || null,
+      title: norm($('#ed-title').value) || null,
+      affiliation: norm($('#ed-affiliation').value) || null,
+      age: numOrNull($('#ed-age').value),
+      birth_year: numOrNull($('#ed-birth').value),
+      fields: norm($('#ed-fields').value).split(/、|,/).map(norm).filter(Boolean).join(',') || null,
+      profile: norm($('#ed-profile').value) || null,
+      updated_at: new Date().toISOString()
+    };
+    // 手で直した項目は、もう「AIの推測のまま」ではないので補足マークを外す
+    const aiMarks = new Set(norm(p.ai_filled).split(',').filter(Boolean));
+    ['title','affiliation','birth_year','age','fields','profile'].forEach(k => aiMarks.delete(k));
+    patch.ai_filled = [...aiMarks].join(',') || null;
+    try{
+      await dbRetry(()=>supa.from('exp_people').update(patch).eq('id', p.id), 'プロフィールの更新');
+      Object.assign(p, patch);
+      const idx = people.findIndex(x=>x.id===p.id);
+      if(idx>=0) people[idx] = Object.assign({}, people[idx], patch);
+      document.getElementById('profile-box').outerHTML = renderProfileView(p);
+      wireProfileView(p);
+    }catch(e){
+      alert('保存できませんでした：'+e.message);
+    }finally{
+      btn.disabled = false;
+    }
+  };
+}
+
+async function openPerson(id){
+  openId = id;
+  let p = people.find(x=>x.id===id);
+  if(!p){
+    try{ p = await dbRetry(()=>supa.from('exp_people').select('*').eq('id',id).single(), '人物の取得'); }
+    catch(e){ return; }
+  }
+  if(!p) return;
+  $('#sh-title').textContent = p.name;
+  $('#sh-body').innerHTML = '<div class="empty">読み込み中…</div>';
+  $('#sheet').classList.add('show');
+  window.scrollTo(0,0);
+
+  let html = renderProfileView(p);
 
   try{
     const notes = await dbRetry(()=>supa.from('exp_notes').select('*').eq('person_id',id).order('created_at',{ascending:false}), '発言の取得');
@@ -637,8 +714,10 @@ async function openPerson(id){
         return `<div class="note">${esc(n.text)}${label?`<div class="src">${esc(label)}</div>`:''}</div>`;
       }).join('') : '<div class="hint">まだありません</div>') + `</div>`;
     $('#sh-body').innerHTML = html;
+    wireProfileView(p);
   }catch(e){
     $('#sh-body').innerHTML = html + '<div class="empty">発言を読み込めませんでした：'+esc(e.message)+'</div>';
+    wireProfileView(p);
   }
 }
 
