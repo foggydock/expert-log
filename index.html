@@ -62,6 +62,7 @@
   }
   .result.err{background:#f7e7e3;color:var(--danger);border-color:#eccabf}
   .result.show{display:block}
+  .result .result-link{color:var(--accent);font-weight:600;text-decoration:underline;cursor:pointer}
   .spinner{
     width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);
     border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite
@@ -384,6 +385,7 @@ ${existingList}
 - profile: 経歴・人物像を3〜5文で。
 - statements: この人が【テキスト】の中で述べていた主張・意見を、1件1文で最大6件。
   内容は本文にある発言に忠実に、意味や主張を変えないこと。ただし文体は「、あの」「〜なんですよね」「えー」のような話し言葉・フィラー・言い淀みを取り除き、読んでそのまま趣旨が伝わる整った書き言葉（である調 or ですます調のどちらか一貫した文体）に整えて書くこと。本文に無い発言を作らないこと。
+  文脈や相手の発言を知らないと意味が分からない相槌・相手への感想・雑談（例：「〜結構いきなり任せますね」のような相手の行動へのコメント）は含めないこと。その人自身の考え・主張・知見・経験として、単独で読んでも意味が伝わるものだけを残すこと。
 - ai_filled: 【テキスト】には書かれておらず、あなた自身の知識で補った項目名だけを並べる。
   使える項目名は "title","affiliation","birth_year","age","fields","profile" のみ。
   本文から読み取れた項目は、ここに入れないこと。
@@ -395,11 +397,16 @@ ${existingList}
 ${rawText}`;
 }
 
-function showResult(msg, isErr){
+function showResult(msg, isErr, isHtml){
   const r = $('#result');
-  r.textContent = msg;
+  if(isHtml) r.innerHTML = msg; else r.textContent = msg;
   r.classList.toggle('err', !!isErr);
   r.classList.add('show');
+  if(isHtml){
+    r.querySelectorAll('.result-link').forEach(el=>{
+      el.onclick = ()=> openPerson(el.dataset.id);
+    });
+  }
 }
 
 $('#btn-go').onclick = async ()=>{
@@ -436,6 +443,7 @@ $('#btn-go').onclick = async ()=>{
     }).select().single(), '出どころの保存');
 
     const added = [], updated = [];
+    const idByName = {};
     for(const p of found){
       const name = norm(p.name);
       const ex = existing.find(e => e.name === name);
@@ -462,6 +470,7 @@ $('#btn-go').onclick = async ()=>{
         }
         personId = ex.id;
         updated.push(name);
+        idByName[name] = personId;
       }else{
         const ins = await dbRetry(()=>supa.from('exp_people').insert({
           name, reading: norm(p.reading)||null, title: norm(p.title)||null,
@@ -472,6 +481,7 @@ $('#btn-go').onclick = async ()=>{
         }).select().single(), '人物の追加');
         personId = ins.id;
         added.push(name);
+        idByName[name] = personId;
       }
 
       for(const s of (p.statements||[])){
@@ -483,10 +493,11 @@ $('#btn-go').onclick = async ()=>{
       }
     }
 
+    const nameLinks = names => names.map(n => `<span class="result-link" data-id="${idByName[n]}">${esc(n)}</span>`).join('、');
     const lines = [];
-    if(added.length) lines.push('新しく追加：' + added.join('、'));
-    if(updated.length) lines.push('情報を足した人：' + updated.join('、'));
-    showResult(lines.join('\n'));
+    if(added.length) lines.push('新しく追加：' + nameLinks(added));
+    if(updated.length) lines.push('情報を足した人：' + nameLinks(updated));
+    showResult(lines.join('\n'), false, true);
     $('#raw').value = '';
     people = [];
   }catch(e){
