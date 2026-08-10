@@ -727,7 +727,7 @@ let spotlightLoaded = false;
 
 async function loadSpotlight(){
   try{
-    const rows = await dbRetry(()=>supa.from('exp_notes').select('text,person_id,exp_people(name,reading,title,affiliation)'), '振り返りの取得');
+    const rows = await dbRetry(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)'), '振り返りの取得');
     spotlightPool = (rows||[]).filter(r => r.exp_people && norm(r.text));
     spotlightLoaded = true;
     showRandomSpotlight();
@@ -738,7 +738,16 @@ async function loadSpotlight(){
 
 function showRandomSpotlight(){
   if(!spotlightPool.length){ $('#spotlight').style.display = 'none'; return; }
-  const r = spotlightPool[Math.floor(Math.random()*spotlightPool.length)];
+  // 長く振り返っていない発言ほど選ばれやすくする（未振り返りを最優先）。
+  // 完全に古い順だと毎回同じ並びになるため、上位2割からランダムに1件選ぶ。
+  const sorted = [...spotlightPool].sort((a,b)=>{
+    const ta = a.last_reviewed_at ? new Date(a.last_reviewed_at).getTime() : -Infinity;
+    const tb = b.last_reviewed_at ? new Date(b.last_reviewed_at).getTime() : -Infinity;
+    return ta - tb;
+  });
+  const poolSize = Math.max(1, Math.ceil(sorted.length*0.2));
+  const pool = sorted.slice(0, poolSize);
+  const r = pool[Math.floor(Math.random()*pool.length)];
   const p = r.exp_people;
   const meta = [p.title, p.affiliation].filter(Boolean).join('／');
   $('#sp-body').innerHTML = `<div class="sp-name">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
@@ -746,6 +755,15 @@ function showRandomSpotlight(){
     <div class="sp-quote">「${esc(r.text)}」</div>`;
   $('#spotlight').dataset.pid = r.person_id;
   $('#spotlight').style.display = 'block';
+  markReviewed(r);
+}
+
+function markReviewed(r){
+  const now = new Date().toISOString();
+  r.last_reviewed_at = now;
+  supa.from('exp_notes').update({last_reviewed_at:now}).eq('id', r.id).then(({error})=>{
+    if(error) console.error('last_reviewed_at更新失敗', error);
+  });
 }
 
 $('#spotlight').onclick = ()=>{
