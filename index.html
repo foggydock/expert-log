@@ -63,6 +63,18 @@
   .result.err{background:#f7e7e3;color:var(--danger);border-color:#eccabf}
   .result.show{display:block}
   .result .result-link{color:var(--accent);font-weight:600;text-decoration:underline;cursor:pointer}
+  .preview{margin-top:14px;display:none}
+  .preview.show{display:block}
+  .preview .pv-title{font-size:14px;font-weight:600;margin-bottom:10px}
+  .pv-person{border-bottom:1px dashed var(--line);padding:10px 0}
+  .pv-person:last-child{border-bottom:none}
+  .pv-person-head{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .pv-person-name{font-weight:600;font-size:15px}
+  .pv-person-meta{font-size:12px;color:var(--muted)}
+  .pv-stmts{margin:8px 0 0 24px;display:flex;flex-direction:column;gap:6px}
+  .pv-stmt{display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;color:var(--ink)}
+  .pv-stmt input{margin-top:3px}
+  .pv-person.off .pv-stmts,.pv-person.off .pv-person-name,.pv-person.off .pv-person-meta{opacity:.4}
   .spinner{
     width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);
     border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite
@@ -206,6 +218,7 @@
 
   <button class="primary" id="btn-go"><span id="btn-label">この文章から人物を取り出す</span></button>
   <div class="result" id="result"></div>
+  <div class="box preview" id="preview"></div>
 </div></section>
 
 <!-- ========== 一覧 ========== -->
@@ -409,6 +422,8 @@ function showResult(msg, isErr, isHtml){
   }
 }
 
+let pending = null;   // 保存前プレビュー中のデータ
+
 $('#btn-go').onclick = async ()=>{
   const raw = norm($('#raw').value);
   if(!raw){ showResult('先に文章を貼り付けてください。', true); return; }
@@ -418,6 +433,7 @@ $('#btn-go').onclick = async ()=>{
   btn.disabled = true;
   $('#btn-label').innerHTML = '<span class="spinner"></span> 読み取り中…';
   $('#result').classList.remove('show');
+  $('#preview').classList.remove('show');
 
   try{
     // 既存の人物名（重複を作らせないためAIに渡す）
@@ -433,18 +449,89 @@ $('#btn-go').onclick = async ()=>{
     const found = (parsed.people||[]).filter(p=>norm(p.name));
     if(!found.length){ showResult('この文章からは人物を見つけられませんでした。', true); return; }
 
+    pending = {
+      raw,
+      srcTitle: norm($('#src-title').value),
+      srcMedia: norm($('#src-media').value),
+      srcDate: norm($('#src-date').value),
+      existing,
+      people: found.map(p => ({
+        ...p,
+        include: true,
+        statements: (p.statements||[]).map(norm).filter(Boolean).map(t => ({ text: t, include: true }))
+      }))
+    };
+    renderPreview();
+  }catch(e){
+    if(e.message === 'NO_KEY') showResult('設定でGemini APIキーを保存してください。', true);
+    else showResult((e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message, true);
+  }finally{
+    btn.disabled = false;
+    $('#btn-label').textContent = 'この文章から人物を取り出す';
+  }
+};
+
+/* ---------- 保存前プレビュー ---------- */
+function renderPreview(){
+  if(!pending) return;
+  const body = pending.people.map((p, pi) => {
+    const meta = [p.title, p.affiliation].filter(Boolean).join('／');
+    const stmts = p.statements.length
+      ? p.statements.map((s, si) => `
+        <label class="pv-stmt">
+          <input type="checkbox" data-pi="${pi}" data-si="${si}" class="pv-stmt-chk" ${s.include?'checked':''}>
+          <span>${esc(s.text)}</span>
+        </label>`).join('')
+      : '<div class="hint" style="margin-left:2px">発言なし</div>';
+    return `<div class="pv-person${p.include?'':' off'}" data-pi="${pi}">
+      <label class="pv-person-head">
+        <input type="checkbox" class="pv-person-chk" data-pi="${pi}" ${p.include?'checked':''}>
+        <span class="pv-person-name">${esc(p.name)}</span>
+        ${meta?`<span class="pv-person-meta">${esc(meta)}</span>`:''}
+      </label>
+      <div class="pv-stmts">${stmts}</div>
+    </div>`;
+  }).join('');
+  $('#preview').innerHTML = `<div class="pv-title">内容を確認してから保存してください（誤って混ざった発言はチェックを外せます）</div>
+    ${body}
+    <div class="row">
+      <button class="primary" id="pv-save" style="margin-top:0">この内容で保存する</button>
+      <button class="primary" id="pv-cancel" style="margin-top:0;background:var(--surface);color:var(--accent);border:1px solid var(--line)">やめる</button>
+    </div>`;
+  $('#preview').classList.add('show');
+
+  $('#preview').querySelectorAll('.pv-stmt-chk').forEach(el => {
+    el.onchange = () => { pending.people[el.dataset.pi].statements[el.dataset.si].include = el.checked; };
+  });
+  $('#preview').querySelectorAll('.pv-person-chk').forEach(el => {
+    el.onchange = () => { pending.people[el.dataset.pi].include = el.checked; renderPreview(); };
+  });
+  $('#pv-cancel').onclick = () => { pending = null; $('#preview').classList.remove('show'); $('#preview').innerHTML = ''; };
+  $('#pv-save').onclick = savePending;
+}
+
+async function savePending(){
+  if(!pending) return;
+  const btn = $('#pv-save');
+  btn.disabled = true; btn.textContent = '保存中…';
+
+  const toSave = pending.people.filter(p => p.include);
+  if(!toSave.length){ alert('保存する人物が選ばれていません。'); btn.disabled = false; btn.textContent = 'この内容で保存する'; return; }
+
+  try{
     // 出どころを1件登録
     const source = await dbRetry(()=>supa.from('exp_sources').insert({
-      title: norm($('#src-title').value) || null,
-      media: norm($('#src-media').value) || null,
-      aired_on: norm($('#src-date').value) || null,
-      raw_text: raw,
+      title: pending.srcTitle || null,
+      media: pending.srcMedia || null,
+      aired_on: pending.srcDate || null,
+      raw_text: pending.raw,
       user_id: currentUid
     }).select().single(), '出どころの保存');
 
+    const existing = pending.existing;
     const added = [], updated = [];
     const idByName = {};
-    for(const p of found){
+    for(const p of toSave){
       const name = norm(p.name);
       const ex = existing.find(e => e.name === name);
       const aiFilled = (p.ai_filled||[]).join(',');
@@ -484,8 +571,9 @@ $('#btn-go').onclick = async ()=>{
         idByName[name] = personId;
       }
 
-      for(const s of (p.statements||[])){
-        const t = norm(s);
+      for(const s of p.statements){
+        if(!s.include) continue;
+        const t = norm(s.text);
         if(!t) continue;
         await dbRetry(()=>supa.from('exp_notes').insert({
           person_id: personId, source_id: source.id, text: t, user_id: currentUid
@@ -498,16 +586,17 @@ $('#btn-go').onclick = async ()=>{
     if(added.length) lines.push('新しく追加：' + nameLinks(added));
     if(updated.length) lines.push('情報を足した人：' + nameLinks(updated));
     showResult(lines.join('\n'), false, true);
+    $('#preview').classList.remove('show');
+    $('#preview').innerHTML = '';
     $('#raw').value = '';
     people = [];
+    pending = null;
   }catch(e){
-    if(e.message === 'NO_KEY') showResult('設定でGemini APIキーを保存してください。', true);
-    else showResult((e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message, true);
-  }finally{
+    alert((e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message);
     btn.disabled = false;
-    $('#btn-label').textContent = 'この文章から人物を取り出す';
+    btn.textContent = 'この内容で保存する';
   }
-};
+}
 
 /* ---------- 一覧 ---------- */
 $('#q').oninput = e => { searchQuery = e.target.value.trim(); renderList(); };
