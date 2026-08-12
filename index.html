@@ -143,7 +143,10 @@
   .note:last-child{border-bottom:none}
   .note .note-text{flex:1}
   .note .src{font-size:11px;color:var(--muted);margin-top:4px}
-  .note .btn-note-del{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);color:var(--danger);border-radius:8px;font-size:11px;padding:4px 8px;cursor:pointer}
+  .note .note-actions{flex:0 0 auto;display:flex;gap:6px}
+  .note .note-actions button{border:1px solid var(--line);background:var(--surface);border-radius:8px;font-size:11px;padding:4px 8px;cursor:pointer}
+  .note .btn-note-del{color:var(--danger)}
+  .note .note-edit-ta{flex:1;min-height:70px;font-size:14px;font-family:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;resize:vertical}
   .del{color:var(--danger);border-color:#eccabf!important}
 
   /* 設定 */
@@ -802,7 +805,13 @@ async function openPerson(id){
       (notes.length ? notes.map(n=>{
         const s = srcMap[n.source_id];
         const label = s ? [s.title, s.media, s.aired_on].filter(Boolean).join('／') : '';
-        return `<div class="note" data-note-id="${n.id}"><div class="note-text">${esc(n.text)}${label?`<div class="src">${esc(label)}</div>`:''}</div><button class="btn-note-del" data-note-id="${n.id}">削除</button></div>`;
+        return `<div class="note" data-note-id="${n.id}">
+          <div class="note-text" data-text="${esc(n.text)}">${esc(n.text)}${label?`<div class="src">${esc(label)}</div>`:''}</div>
+          <div class="note-actions">
+            <button class="btn-note-edit" data-note-id="${n.id}">編集</button>
+            <button class="btn-note-del" data-note-id="${n.id}">削除</button>
+          </div>
+        </div>`;
       }).join('') : '<div class="hint">まだありません</div>') + `</div>`;
     $('#sh-body').innerHTML = html;
     wireProfileView(p);
@@ -819,10 +828,41 @@ async function openPerson(id){
         }
       };
     });
+    $('#sh-body').querySelectorAll('.btn-note-edit').forEach(btn=>{
+      btn.onclick = ()=> startNoteEdit(btn.closest('.note'));
+    });
   }catch(e){
     $('#sh-body').innerHTML = html + '<div class="empty">発言を読み込めませんでした：'+esc(e.message)+'</div>';
     wireProfileView(p);
   }
+}
+
+function startNoteEdit(noteEl){
+  const id = noteEl.dataset.noteId;
+  const textEl = noteEl.querySelector('.note-text');
+  const original = textEl.dataset.text;
+  noteEl.innerHTML = `
+    <textarea class="note-edit-ta">${esc(original)}</textarea>
+    <div class="note-actions">
+      <button class="btn-note-save">保存</button>
+      <button class="btn-note-cancel">キャンセル</button>
+    </div>`;
+  const ta = noteEl.querySelector('.note-edit-ta');
+  ta.focus();
+  noteEl.querySelector('.btn-note-cancel').onclick = ()=> openPerson(openId);
+  noteEl.querySelector('.btn-note-save').onclick = async ()=>{
+    const nv = norm(ta.value);
+    if(!nv){ alert('発言を空にはできません。'); return; }
+    const saveBtn = noteEl.querySelector('.btn-note-save');
+    saveBtn.disabled = true;
+    try{
+      await dbRetry(()=>supa.from('exp_notes').update({text:nv}).eq('id', id), '発言の更新');
+      openPerson(openId);
+    }catch(e){
+      alert('保存できませんでした：'+e.message);
+      saveBtn.disabled = false;
+    }
+  };
 }
 
 /* ---------- 振り返りスポットライト ---------- */
