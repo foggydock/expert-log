@@ -802,6 +802,7 @@ async function openPerson(id){
           <div class="note-text" data-text="${esc(n.text)}">${esc(n.text)}${label?`<div class="src">${esc(label)}</div>`:''}</div>
           <div class="note-actions">
             <button class="btn-note-edit" data-note-id="${n.id}">編集</button>
+            ${n.text_before_cleanup?`<button class="btn-note-revert" data-note-id="${n.id}">整形前に戻す</button>`:''}
             <button class="btn-note-del" data-note-id="${n.id}">削除</button>
           </div>
         </div>`;
@@ -823,6 +824,20 @@ async function openPerson(id){
     });
     $('#sh-body').querySelectorAll('.btn-note-edit').forEach(btn=>{
       btn.onclick = ()=> startNoteEdit(btn.closest('.note'));
+    });
+    $('#sh-body').querySelectorAll('.btn-note-revert').forEach(btn=>{
+      btn.onclick = async ()=>{
+        if(!confirm('整形前の文章に戻します。よろしいですか？')) return;
+        btn.disabled = true;
+        try{
+          const n = notes.find(x=>x.id===btn.dataset.noteId);
+          await dbRetry(()=>supa.from('exp_notes').update({text:n.text_before_cleanup, text_before_cleanup:null}).eq('id', btn.dataset.noteId), '発言の復元');
+          openPerson(openId);
+        }catch(e){
+          alert('戻せませんでした：'+e.message);
+          btn.disabled = false;
+        }
+      };
     });
   }catch(e){
     $('#sh-body').innerHTML = html + '<div class="empty">発言を読み込めませんでした：'+esc(e.message)+'</div>';
@@ -962,7 +977,9 @@ $('#btn-cleanup').onclick = async ()=>{
         const arr = parsed.statements || [];
         for(let i=0;i<group.length;i++){
           const nv = norm(arr[i]);
-          if(nv) await dbRetry(()=>supa.from('exp_notes').update({text:nv}).eq('id',group[i].id), '発言の更新');
+          if(nv && nv !== group[i].text){
+            await dbRetry(()=>supa.from('exp_notes').update({text:nv, text_before_cleanup:group[i].text}).eq('id',group[i].id), '発言の更新');
+          }
           done++;
         }
       }catch(e){
