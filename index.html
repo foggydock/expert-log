@@ -214,13 +214,6 @@
   <div class="label">文字起こし・記事などを、そのまま貼ってください</div>
   <textarea id="raw" placeholder="ポッドキャストの文字起こしや、記事の本文を貼り付け"></textarea>
 
-  <div class="label" style="margin-top:12px">出どころ（任意・あとで思い出す手がかりに）</div>
-  <input class="src" id="src-title" placeholder="番組名・記事名（例：コテンラジオ #123）">
-  <div class="row">
-    <input class="src" id="src-media" placeholder="媒体（例：Podcast／新聞）">
-    <input class="src" id="src-date" placeholder="日付（例：2026-08-02）">
-  </div>
-
   <button class="primary" id="btn-go"><span id="btn-label">この文章から人物を取り出す</span></button>
   <div class="result" id="result"></div>
   <div class="box preview" id="preview"></div>
@@ -456,9 +449,9 @@ $('#btn-go').onclick = async ()=>{
 
     pending = {
       raw,
-      srcTitle: norm($('#src-title').value),
-      srcMedia: norm($('#src-media').value),
-      srcDate: norm($('#src-date').value),
+      srcTitle: '',
+      srcMedia: '',
+      srcDate: '',
       existing,
       people: found.map(p => ({
         ...p,
