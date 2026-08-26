@@ -895,7 +895,8 @@ function showRandomSpotlight(){
   const sorted = [...spotlightPool].sort((a,b)=>{
     const ta = a.last_reviewed_at ? new Date(a.last_reviewed_at).getTime() : -Infinity;
     const tb = b.last_reviewed_at ? new Date(b.last_reviewed_at).getTime() : -Infinity;
-    return ta - tb;
+    if(ta !== tb) return ta - tb;
+    return Math.random()-0.5; // 同点（未振り返り同士など）はJSの安定ソートで並びが固定されてしまうため、都度ランダムに崩す
   });
   const poolSize = Math.max(1, Math.ceil(sorted.length*0.2));
   const pool = sorted.slice(0, poolSize);
