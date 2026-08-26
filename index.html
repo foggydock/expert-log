@@ -529,6 +529,7 @@ async function savePending(){
     const existing = pending.existing;
     const added = [], updated = [];
     const idByName = {};
+    const noteRows = [];
     for(const p of toSave){
       const name = norm(p.name);
       const ex = existing.find(e => e.name === name);
@@ -573,10 +574,12 @@ async function savePending(){
         if(!s.include) continue;
         const t = norm(s.text);
         if(!t) continue;
-        await dbRetry(()=>supa.from('exp_notes').insert({
-          person_id: personId, source_id: source.id, text: t, user_id: currentUid
-        }), '発言の保存');
+        noteRows.push({ person_id: personId, source_id: source.id, text: t, user_id: currentUid });
       }
+    }
+
+    if(noteRows.length){
+      await dbRetry(()=>supa.from('exp_notes').insert(noteRows), '発言の保存');
     }
 
     const nameLinks = names => names.map(n => `<span class="result-link" data-id="${idByName[n]}">${esc(n)}</span>`).join('、');
