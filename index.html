@@ -312,14 +312,29 @@ $('#btn-savekey').onclick = ()=>{
 
 /* ---------- 通信まわり（歴史ログと同じ作り） ---------- */
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
-const isNetErr = m => /load failed|failed to fetch|networkerror|network error|fetch/i.test(m||'');
+const isNetErr = m => /load failed|failed to fetch|networkerror|network error|fetch|timeout|タイムアウト/i.test(m||'');
 function retryNote(msg){ $('#btn-label').textContent = msg; }
+
+function withTimeout(promise, ms, label){
+  let timer;
+  const timeout = new Promise((_, reject)=>{
+    timer = setTimeout(()=>reject(new Error(`${label}がタイムアウトしました`)), ms);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(()=>clearTimeout(timer));
+}
 
 async function dbRetry(fn, label){
   let lastErr;
   for(let a=0;a<3;a++){
-    if(a>0){ retryNote('通信を再試行中…'); await sleep(800*a); }
-    const { data, error } = await fn();
+    if(a>0){ console.warn(`${label}を再試行します (${a+1}/3)`); await sleep(800*a); }
+    let result;
+    try{ result = await withTimeout(fn(), 6000, label); }
+    catch(e){
+      lastErr = e;
+      if(!isNetErr(e.message)) break;
+      continue;
+    }
+    const { data, error } = result;
     if(!error) return data;
     lastErr = error;
     if(!isNetErr(error.message)) break;
@@ -879,16 +894,34 @@ function startNoteEdit(noteEl){
 /* ---------- 振り返りスポットライト ---------- */
 let spotlightPool = [];
 let spotlightLoaded = false;
+let spotlightLoadPromise = null;
 
-async function loadSpotlight(){
-  try{
-    const rows = await dbRetry(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)'), '振り返りの取得');
-    spotlightPool = (rows||[]).filter(r => r.exp_people && norm(r.text));
-    spotlightLoaded = true;
-    showRandomSpotlight();
-  }catch(e){
-    $('#spotlight').style.display = 'none';
+function loadSpotlight(){
+  // onAuthStateChange と getSession が同時に発火しても取得を1本にまとめる。
+  // 二重取得の片方だけ失敗し、成功済みの表示を後から隠す競合を防ぐ。
+  if(spotlightLoadPromise) return spotlightLoadPromise;
+  if(!spotlightLoaded){
+    $('#sp-body').innerHTML = '<div class="hint">振り返りを読み込み中…</div>';
+    $('#spotlight').style.display = 'block';
   }
+  spotlightLoadPromise = (async ()=>{
+    try{
+      const rows = await dbRetry(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)'), '振り返りの取得');
+      spotlightPool = (rows||[]).filter(r => r.exp_people && norm(r.text));
+      spotlightLoaded = true;
+      showRandomSpotlight();
+    }catch(e){
+      console.error('振り返りの取得に失敗', e);
+      if(!spotlightLoaded){
+        $('#sp-body').innerHTML = '<div class="hint">振り返りを読み込めませんでした。<button class="btn-sm" id="sp-retry">再試行</button></div>';
+        $('#spotlight').style.display = 'block';
+        $('#sp-retry').onclick = ev=>{ ev.stopPropagation(); loadSpotlight(); };
+      }
+    }finally{
+      spotlightLoadPromise = null;
+    }
+  })();
+  return spotlightLoadPromise;
 }
 
 function showRandomSpotlight(){
