@@ -532,71 +532,33 @@ async function savePending(){
   if(!toSave.length){ alert('保存する人物が選ばれていません。'); btn.disabled = false; btn.textContent = 'この内容で保存する'; return; }
 
   try{
-    // 出どころを1件登録
-    const source = await dbRetry(()=>supa.from('exp_sources').insert({
-      title: pending.srcTitle || null,
-      media: pending.srcMedia || null,
-      aired_on: pending.srcDate || null,
-      raw_text: pending.raw,
-      user_id: currentUid
-    }).select().single(), '出どころの保存');
+    // DB関数の中で、出どころ・人物・発言を1つのトランザクションとして保存する。
+    // 途中で失敗した場合は、どのテーブルにも中途半端なデータを残さない。
+    const payloadPeople = toSave.map(p => ({
+      name: norm(p.name),
+      reading: norm(p.reading) || null,
+      title: norm(p.title) || null,
+      affiliation: norm(p.affiliation) || null,
+      birth_year: p.birth_year ?? null,
+      age: p.age ?? null,
+      fields: (p.fields||[]).map(norm).filter(Boolean).join(',') || null,
+      profile: norm(p.profile) || null,
+      ai_filled: (p.ai_filled||[]).map(norm).filter(Boolean),
+      statements: p.statements.filter(s => s.include).map(s => norm(s.text)).filter(Boolean)
+    }));
+    const saved = await dbRetry(()=>supa.rpc('exp_save_capture', {
+      p_source: {
+        title: pending.srcTitle || null,
+        media: pending.srcMedia || null,
+        aired_on: pending.srcDate || null,
+        raw_text: pending.raw
+      },
+      p_people: payloadPeople
+    }), 'まとめて保存');
 
-    const existing = pending.existing;
-    const added = [], updated = [];
-    const idByName = {};
-    const noteRows = [];
-    for(const p of toSave){
-      const name = norm(p.name);
-      const ex = existing.find(e => e.name === name);
-      const aiFilled = (p.ai_filled||[]).join(',');
-      const fields = (p.fields||[]).map(norm).filter(Boolean).join(',');
-      let personId;
-
-      if(ex){
-        // 既にいる人は、空いている項目だけ埋める（既存の内容は勝手に上書きしない）
-        const patch = {};
-        if(!norm(ex.title) && norm(p.title)) patch.title = norm(p.title);
-        if(!norm(ex.affiliation) && norm(p.affiliation)) patch.affiliation = norm(p.affiliation);
-        if(ex.birth_year==null && p.birth_year!=null) patch.birth_year = p.birth_year;
-        if(ex.age==null && p.age!=null) patch.age = p.age;
-        if(!norm(ex.fields) && fields) patch.fields = fields;
-        if(!norm(ex.profile) && norm(p.profile)) patch.profile = norm(p.profile);
-        if(Object.keys(patch).length){
-          // 今回AIが知識で補った項目のうち、実際に書き込んだものだけ印を足す
-          const marks = new Set(norm(ex.ai_filled).split(',').filter(Boolean));
-          (p.ai_filled||[]).forEach(k => { if(k in patch) marks.add(k); });
-          patch.ai_filled = [...marks].join(',');
-          patch.updated_at = new Date().toISOString();
-          await dbRetry(()=>supa.from('exp_people').update(patch).eq('id', ex.id), '人物の更新');
-        }
-        personId = ex.id;
-        updated.push(name);
-        idByName[name] = personId;
-      }else{
-        const ins = await dbRetry(()=>supa.from('exp_people').insert({
-          name, reading: norm(p.reading)||null, title: norm(p.title)||null,
-          affiliation: norm(p.affiliation)||null,
-          birth_year: p.birth_year ?? null, age: p.age ?? null,
-          fields: fields||null, profile: norm(p.profile)||null,
-          ai_filled: aiFilled||null, user_id: currentUid
-        }).select().single(), '人物の追加');
-        personId = ins.id;
-        added.push(name);
-        idByName[name] = personId;
-      }
-
-      for(const s of p.statements){
-        if(!s.include) continue;
-        const t = norm(s.text);
-        if(!t) continue;
-        noteRows.push({ person_id: personId, source_id: source.id, text: t, user_id: currentUid });
-      }
-    }
-
-    if(noteRows.length){
-      await dbRetry(()=>supa.from('exp_notes').insert(noteRows), '発言の保存');
-    }
-
+    const added = (saved.added||[]).map(x => x.name);
+    const updated = (saved.updated||[]).map(x => x.name);
+    const idByName = saved.ids || {};
     const nameLinks = names => names.map(n => `<span class="result-link" data-id="${idByName[n]}">${esc(n)}</span>`).join('、');
     const lines = [];
     if(added.length) lines.push('新しく追加：' + nameLinks(added));
