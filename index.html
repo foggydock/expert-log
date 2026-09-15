@@ -343,6 +343,21 @@ async function dbRetry(fn, label){
   const e = new Error((lastErr && lastErr.message) || '失敗'); e._label = label; throw e;
 }
 
+// 保存系はタイムアウト後に自動再試行しない。サーバー側では処理が完了していても
+// ブラウザだけが応答を受け取れないことがあり、再送すると同じ取り込みを重複保存するため。
+async function dbWrite(fn, label){
+  try{
+    const { data, error } = await withTimeout(fn(), 6000, label);
+    if(error) throw error;
+    return data;
+  }catch(err){
+    const e = new Error((err && err.message) || '失敗');
+    e._label = label;
+    e._uncertain = isNetErr(e.message);
+    throw e;
+  }
+}
+
 async function geminiCall(prompt, responseSchema){
   const key = localStorage.getItem('gemini_key');
   if(!key) throw new Error('NO_KEY');
@@ -547,7 +562,7 @@ async function savePending(){
       ai_filled: (p.ai_filled||[]).map(norm).filter(Boolean),
       statements: p.statements.filter(s => s.include).map(s => norm(s.text)).filter(Boolean)
     }));
-    const saved = await dbRetry(()=>supa.rpc('exp_save_capture', {
+    const saved = await dbWrite(()=>supa.rpc('exp_save_capture', {
       p_source: {
         title: pending.srcTitle || null,
         media: pending.srcMedia || null,
@@ -571,7 +586,11 @@ async function savePending(){
     people = [];
     pending = null;
   }catch(e){
-    alert((e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message);
+    if(e._uncertain){
+      alert('保存の完了を確認できませんでした。二重登録を防ぐため自動では再試行していません。先に「一覧」で保存済みか確認してください。');
+    }else{
+      alert((e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message);
+    }
     btn.disabled = false;
     btn.textContent = 'この内容で保存する';
   }
