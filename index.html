@@ -889,17 +889,33 @@ function loadSpotlight(){
 
 function showRandomSpotlight(){
   if(!spotlightPool.length){ $('#spotlight').style.display = 'none'; return; }
-  // 長く振り返っていない発言ほど選ばれやすくする（未振り返りを最優先）。
-  // 完全に古い順だと毎回同じ並びになるため、上位2割からランダムに1件選ぶ。
-  const sorted = [...spotlightPool].sort((a,b)=>{
-    const ta = a.last_reviewed_at ? new Date(a.last_reviewed_at).getTime() : -Infinity;
-    const tb = b.last_reviewed_at ? new Date(b.last_reviewed_at).getTime() : -Infinity;
-    if(ta !== tb) return ta - tb;
-    return Math.random()-0.5; // 同点（未振り返り同士など）はJSの安定ソートで並びが固定されてしまうため、都度ランダムに崩す
+  // 発言ではなく人物単位で間隔を空ける。同じ人物の別の発言が未振り返りでも、
+  // その人物を直近で表示していれば候補の後ろへ回す。
+  const byPerson = new Map();
+  spotlightPool.forEach(note => {
+    const group = byPerson.get(note.person_id) || [];
+    group.push(note);
+    byPerson.set(note.person_id, group);
+  });
+  const sorted = [...byPerson.values()].map(notes => {
+    // 人物の最終表示時刻は、その人の発言のうち最も新しい時刻を使う。
+    const lastReviewed = Math.max(...notes.map(note =>
+      note.last_reviewed_at ? new Date(note.last_reviewed_at).getTime() : -Infinity
+    ));
+    return {notes, lastReviewed};
+  }).sort((a,b)=>{
+    if(a.lastReviewed !== b.lastReviewed) return a.lastReviewed - b.lastReviewed;
+    return Math.random()-0.5; // 同点（未振り返り同士など）は都度ランダムに崩す
   });
   const poolSize = Math.max(1, Math.ceil(sorted.length*0.2));
   const pool = sorted.slice(0, poolSize);
-  const r = pool[Math.floor(Math.random()*pool.length)];
+  const person = pool[Math.floor(Math.random()*pool.length)];
+  // 選ばれた人物の中では、まだ見ていない発言を優先する。
+  const r = [...person.notes].sort((a,b)=>{
+    const ta = a.last_reviewed_at ? new Date(a.last_reviewed_at).getTime() : -Infinity;
+    const tb = b.last_reviewed_at ? new Date(b.last_reviewed_at).getTime() : -Infinity;
+    return ta - tb || Math.random()-0.5;
+  })[0];
   const p = r.exp_people;
   const meta = [p.title, p.affiliation].filter(Boolean).join('／');
   $('#sp-body').innerHTML = `<div class="sp-name">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
@@ -912,8 +928,10 @@ function showRandomSpotlight(){
 
 function markReviewed(r){
   const now = new Date().toISOString();
-  r.last_reviewed_at = now;
-  supa.from('exp_notes').update({last_reviewed_at:now}).eq('id', r.id).then(({error})=>{
+  // 次のシャッフルでも同じ人物を選ばないよう、その人の全発言を同時に更新する。
+  spotlightPool.filter(note => note.person_id === r.person_id)
+    .forEach(note => { note.last_reviewed_at = now; });
+  supa.from('exp_notes').update({last_reviewed_at:now}).eq('person_id', r.person_id).then(({error})=>{
     if(error) console.error('last_reviewed_at更新失敗', error);
   });
 }
