@@ -701,12 +701,24 @@ $('#sh-del').onclick = async ()=>{
   if(!openId) return;
   const p = people.find(x=>x.id===openId);
   if(!confirm(`「${p?p.name:''}」を発言ごと削除します。よろしいですか？`)) return;
+  const btn = $('#sh-del');
+  btn.disabled = true;
   try{
-    await dbRetry(()=>supa.from('exp_notes').delete().eq('person_id', openId), '発言の削除');
-    await dbRetry(()=>supa.from('exp_people').delete().eq('id', openId), '人物の削除');
+    // exp_notes.person_id は ON DELETE CASCADE。親だけを一度削除すれば、
+    // 発言を含めてDB内で原子的に削除される。
+    await dbWrite(()=>supa.from('exp_people').delete().eq('id', openId), '人物の削除');
     $('#sheet').classList.remove('show'); openId=null;
     loadPeople();
-  }catch(e){ alert('削除できませんでした：'+e.message); }
+  }catch(e){
+    if(e._uncertain){
+      // サーバーで削除済みか不明なため、画面を閉じて最新状態を取り直す。
+      $('#sheet').classList.remove('show'); openId=null;
+      loadPeople();
+      alert('削除の完了を確認できませんでした。最新の一覧を確認してください。');
+    }else{
+      alert('削除できませんでした：'+e.message);
+    }
+  }finally{ btn.disabled = false; }
 };
 
 function fieldRow(k, v, aiKeys, key){
