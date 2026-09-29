@@ -96,6 +96,8 @@
   .list-mode{display:flex;gap:6px;margin:2px 0 12px}
   .list-mode button{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--muted);font:600 13px inherit;cursor:pointer}
   .list-mode button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+  .list-summary{font-size:13px;color:var(--muted);margin:0 2px 10px}
+  .list-summary strong{color:var(--ink);font-size:15px}
   .filter-label{font-size:12px;color:var(--muted);margin:2px 2px 3px}
   .genre-section{margin:18px 0 22px}
   .genre-section:first-child{margin-top:4px}
@@ -107,6 +109,8 @@
     padding:13px 14px;margin-bottom:10px;box-shadow:var(--shadow);cursor:pointer
   }
   .card .nm{font-size:17px;font-weight:600}
+  .card .card-head{display:flex;align-items:baseline;gap:9px}
+  .card .no{flex:0 0 auto;color:var(--accent);font-size:12px;font-weight:600}
   .card .nm .rd{font-size:12px;color:var(--muted);font-weight:400;margin-left:6px}
   .card .mt{font-size:13px;color:var(--muted);margin-top:2px}
   .card .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -237,6 +241,7 @@
     <button type="button" class="on" data-list-mode="recent">新着順</button>
     <button type="button" data-list-mode="genre">ジャンル別</button>
   </div>
+  <div class="list-summary" id="list-summary" aria-live="polite"></div>
   <div class="filter-label">専門・タグで絞り込む</div>
   <div class="chips" id="field-chips"></div>
   <div id="list"></div>
@@ -661,6 +666,13 @@ function renderList(){
     rows = rows.filter(p => [p.name,p.reading,p.title,p.affiliation,p.fields,p.profile,p._notetext]
       .some(v => (v||'').toLowerCase().includes(q)));
   }
+  const total = people.length;
+  $('#list-summary').innerHTML = total
+    ? `登録済み <strong>${total}人</strong>${rows.length !== total ? ` <span>（表示 ${rows.length}人）</span>` : ''}`
+    : '登録済み <strong>0人</strong>';
+  // 番号は新着順の全登録者リストを基準にする。ジャンル別では同じ人物が複数の
+  // ジャンルに出るため、表示ごとに採番せず同じ No. を保つ。
+  const numbers = new Map(people.map((p, index) => [p.id, index + 1]));
   if(!rows.length){
     $('#list').innerHTML = '<div class="empty">'+(people.length?'見つかりませんでした':'まだ誰もいません。「記録」から文章を貼ってください。')+'</div>';
     return;
@@ -670,7 +682,7 @@ function renderList(){
     const age = p.age!=null ? p.age+'歳' : (p.birth_year!=null ? p.birth_year+'年生まれ' : '');
     const tags = norm(p.fields).split(',').filter(Boolean).map(f=>`<span class="tag">${esc(f)}</span>`).join('');
     return `<div class="card" data-id="${p.id}">
-      <div class="nm">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
+      <div class="card-head"><span class="no">No. ${numbers.get(p.id)}</span><div class="nm">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div></div>
       ${meta||age ? `<div class="mt">${esc([meta,age].filter(Boolean).join('・'))}</div>` : ''}
       <div class="tags">${tags}${p._notes?`<span class="tag cnt">発言 ${p._notes}</span>`:''}</div>
     </div>`;
