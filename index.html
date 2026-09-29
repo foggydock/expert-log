@@ -122,6 +122,7 @@
   .spotlight{cursor:pointer}
   .spotlight h3{display:flex;align-items:center;justify-content:space-between}
   .sp-name{font-size:16px;font-weight:600}
+  .sp-number{color:var(--accent);font-size:12px;font-weight:600;margin-right:8px}
   .sp-name .rd{font-size:12px;color:var(--muted);font-weight:400;margin-left:6px}
   .sp-meta{font-size:12px;color:var(--muted);margin-top:2px}
   .sp-quote{margin-top:10px;font-size:14px;line-height:1.7;padding:11px 13px;background:var(--accent-soft);border-radius:10px;color:var(--ink)}
@@ -307,6 +308,7 @@ const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&
 const norm = s => (s||'').trim();
 let currentUid = null;
 let people = [];          // 一覧用にメモリへ持つ
+let personNumbers = new Map(); // 新着順の一覧で使う人物番号
 let activeField = 'すべて';
 let searchQuery = '';
 let listMode = 'recent';
@@ -630,6 +632,7 @@ async function loadPeople(){
   $('#list').innerHTML = '<div class="empty">読み込み中…</div>';
   try{
     people = await dbRetry(()=>supa.from('exp_people').select('*').order('updated_at',{ascending:false}), '一覧の取得');
+    setPersonNumbers(people);
     // 発言は件数の表示と検索に使うので、本文ごと持ってくる
     const notes = await dbRetry(()=>supa.from('exp_notes').select('person_id,text'), '発言の取得');
     const map = {};
@@ -643,6 +646,10 @@ async function loadPeople(){
   }catch(e){
     $('#list').innerHTML = '<div class="empty">読み込めませんでした：'+esc(e.message)+'</div>';
   }
+}
+
+function setPersonNumbers(rows){
+  personNumbers = new Map((rows||[]).map((p, index) => [p.id, index + 1]));
 }
 
 function renderChips(){
@@ -672,7 +679,6 @@ function renderList(){
     : '登録済み <strong>0人</strong>';
   // 番号は新着順の全登録者リストを基準にする。ジャンル別では同じ人物が複数の
   // ジャンルに出るため、表示ごとに採番せず同じ No. を保つ。
-  const numbers = new Map(people.map((p, index) => [p.id, index + 1]));
   if(!rows.length){
     $('#list').innerHTML = '<div class="empty">'+(people.length?'見つかりませんでした':'まだ誰もいません。「記録」から文章を貼ってください。')+'</div>';
     return;
@@ -682,7 +688,7 @@ function renderList(){
     const age = p.age!=null ? p.age+'歳' : (p.birth_year!=null ? p.birth_year+'年生まれ' : '');
     const tags = norm(p.fields).split(',').filter(Boolean).map(f=>`<span class="tag">${esc(f)}</span>`).join('');
     return `<div class="card" data-id="${p.id}">
-      <div class="card-head"><span class="no">No. ${numbers.get(p.id)}</span><div class="nm">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div></div>
+      <div class="card-head"><span class="no">No. ${personNumbers.get(p.id)}</span><div class="nm">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div></div>
       ${meta||age ? `<div class="mt">${esc([meta,age].filter(Boolean).join('・'))}</div>` : ''}
       <div class="tags">${tags}${p._notes?`<span class="tag cnt">発言 ${p._notes}</span>`:''}</div>
     </div>`;
@@ -948,7 +954,13 @@ function loadSpotlight(){
   }
   spotlightLoadPromise = (async ()=>{
     try{
-      const rows = await dbRetry(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)'), '振り返りの取得');
+      // 一覧を開いていない状態でも同じ No. を出せるよう、番号の基準となる
+      // 全人物の新着順を同時に取得する。
+      const [rows, numberRows] = await Promise.all([
+        dbRetry(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)'), '振り返りの取得'),
+        dbRetry(()=>supa.from('exp_people').select('id').order('updated_at',{ascending:false}), '人物番号の取得')
+      ]);
+      setPersonNumbers(numberRows);
       spotlightPool = (rows||[]).filter(r => r.exp_people && norm(r.text));
       spotlightLoaded = true;
       showRandomSpotlight();
@@ -997,7 +1009,8 @@ function showRandomSpotlight(){
   })[0];
   const p = r.exp_people;
   const meta = [p.title, p.affiliation].filter(Boolean).join('／');
-  $('#sp-body').innerHTML = `<div class="sp-name">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
+  const number = personNumbers.get(r.person_id);
+  $('#sp-body').innerHTML = `<div class="sp-name">${number?`<span class="sp-number">No. ${number}</span>`:''}${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
     ${meta?`<div class="sp-meta">${esc(meta)}</div>`:''}
     <div class="sp-quote">「${esc(r.text)}」</div>`;
   $('#spotlight').dataset.pid = r.person_id;
