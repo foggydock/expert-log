@@ -943,11 +943,36 @@ function startNoteEdit(noteEl){
 let spotlightPool = [];
 let spotlightLoaded = false;
 let spotlightLoadPromise = null;
+let spotlightRequestId = 0;
+
+function clearUserScopedState(){
+  // ログアウト後や別アカウントへの切替時に、前の利用者の内容を画面・メモリから
+  // 即時に取り除く。進行中の取得結果も requestId の不一致で破棄する。
+  spotlightRequestId++;
+  people = [];
+  personNumbers = new Map();
+  spotlightPool = [];
+  spotlightLoaded = false;
+  spotlightLoadPromise = null;
+  pending = null;
+  openId = null;
+  $('#list').innerHTML = '';
+  $('#list-summary').textContent = '';
+  $('#field-chips').innerHTML = '';
+  $('#spotlight').style.display = 'none';
+  $('#sp-body').innerHTML = '';
+  $('#sheet').classList.remove('show');
+  $('#raw').value = '';
+  $('#result').classList.remove('show');
+  $('#preview').classList.remove('show');
+  $('#preview').innerHTML = '';
+}
 
 function loadSpotlight(){
   // onAuthStateChange と getSession が同時に発火しても取得を1本にまとめる。
   // 二重取得の片方だけ失敗し、成功済みの表示を後から隠す競合を防ぐ。
   if(spotlightLoadPromise) return spotlightLoadPromise;
+  const requestId = ++spotlightRequestId;
   if(!spotlightLoaded){
     $('#sp-body').innerHTML = '<div class="hint">振り返りを読み込み中…</div>';
     $('#spotlight').style.display = 'block';
@@ -960,11 +985,14 @@ function loadSpotlight(){
         dbRetry(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)'), '振り返りの取得'),
         dbRetry(()=>supa.from('exp_people').select('id').order('updated_at',{ascending:false}), '人物番号の取得')
       ]);
+      // ログアウト・アカウント切替後に届いた、前の利用者向け通信結果は使わない。
+      if(requestId !== spotlightRequestId || !currentUid) return;
       setPersonNumbers(numberRows);
       spotlightPool = (rows||[]).filter(r => r.exp_people && norm(r.text));
       spotlightLoaded = true;
       showRandomSpotlight();
     }catch(e){
+      if(requestId !== spotlightRequestId || !currentUid) return;
       console.error('振り返りの取得に失敗', e);
       if(!spotlightLoaded){
         $('#sp-body').innerHTML = '<div class="hint">振り返りを読み込めませんでした。<button class="btn-sm" id="sp-retry">再試行</button></div>';
@@ -972,7 +1000,7 @@ function loadSpotlight(){
         $('#sp-retry').onclick = ev=>{ ev.stopPropagation(); loadSpotlight(); };
       }
     }finally{
-      spotlightLoadPromise = null;
+      if(requestId === spotlightRequestId) spotlightLoadPromise = null;
     }
   })();
   return spotlightLoadPromise;
@@ -1114,12 +1142,14 @@ function authMsg(m, ok){ const el=$('#au-msg'); el.textContent=m; el.classList.t
 
 supa.auth.onAuthStateChange((_e, session)=>{
   if(session && session.user){
+    if(currentUid && currentUid !== session.user.id) clearUserScopedState();
     currentUid = session.user.id;
     localStorage.setItem('last_email', session.user.email||'');
     authScreen.classList.add('hide');
     $('#who').textContent = 'ログイン中：'+(session.user.email||'');
     if(!spotlightLoaded) loadSpotlight();
   }else{
+    clearUserScopedState();
     currentUid = null;
     authScreen.classList.remove('hide');
   }
@@ -1128,11 +1158,13 @@ supa.auth.onAuthStateChange((_e, session)=>{
 (async ()=>{
   const { data } = await supa.auth.getSession();
   if(data.session && data.session.user){
+    if(currentUid && currentUid !== data.session.user.id) clearUserScopedState();
     currentUid = data.session.user.id;
     authScreen.classList.add('hide');
     $('#who').textContent = 'ログイン中：'+(data.session.user.email||'');
     if(!spotlightLoaded) loadSpotlight();
   }else{
+    clearUserScopedState();
     authScreen.classList.remove('hide');
   }
 })();
