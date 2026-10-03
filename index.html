@@ -110,6 +110,7 @@
   }
   .card .nm{font-size:17px;font-weight:600}
   .card .card-head{display:flex;align-items:baseline;gap:9px}
+  .card .photo-avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;flex:0 0 auto;border:1px solid var(--line)}
   .card .no{flex:0 0 auto;color:var(--accent);font-size:12px;font-weight:600}
   .card .nm .rd{font-size:12px;color:var(--muted);font-weight:400;margin-left:6px}
   .card .mt{font-size:13px;color:var(--muted);margin-top:2px}
@@ -149,6 +150,9 @@
   .field:last-child{border-bottom:none}
   .field .k{color:var(--muted);flex:0 0 74px;font-size:13px}
   .field .v{flex:1}
+  .profile-photo{display:block;width:112px;height:112px;object-fit:cover;border-radius:14px;border:1px solid var(--line);margin:2px 0 10px}
+  .photo-link{display:inline-flex;align-items:center;gap:4px;color:var(--accent);font-size:14px;font-weight:600;text-decoration:none}
+  .photo-link:hover{text-decoration:underline}
   .ai-mark{
     font-size:10px;padding:1px 6px;border-radius:999px;background:var(--ai-soft);
     color:var(--ai);margin-left:6px;vertical-align:2px;white-space:nowrap
@@ -306,6 +310,15 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
 const $ = s => document.querySelector(s);
 const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm = s => (s||'').trim();
+function safeHttpUrl(value){
+  try{
+    const url = new URL(norm(value));
+    return /^https?:$/.test(url.protocol) ? url.href : '';
+  }catch(_e){ return ''; }
+}
+function isDirectImageUrl(value){
+  return /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(value||'');
+}
 let currentUid = null;
 let people = [];          // 一覧用にメモリへ持つ
 let personNumbers = new Map(); // 新着順の一覧で使う人物番号
@@ -687,8 +700,10 @@ function renderList(){
     const meta = [p.title, p.affiliation].filter(Boolean).join('／');
     const age = p.age!=null ? p.age+'歳' : (p.birth_year!=null ? p.birth_year+'年生まれ' : '');
     const tags = norm(p.fields).split(',').filter(Boolean).map(f=>`<span class="tag">${esc(f)}</span>`).join('');
+    const photoUrl = safeHttpUrl(p.photo_url);
+    const avatar = isDirectImageUrl(photoUrl) ? `<img class="photo-avatar" src="${esc(photoUrl)}" alt="${esc(p.name)}の顔写真" loading="lazy" onerror="this.remove()">` : '';
     return `<div class="card" data-id="${p.id}">
-      <div class="card-head"><span class="no">No. ${personNumbers.get(p.id)}</span><div class="nm">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div></div>
+      <div class="card-head"><span class="no">No. ${personNumbers.get(p.id)}</span>${avatar}<div class="nm">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div></div>
       ${meta||age ? `<div class="mt">${esc([meta,age].filter(Boolean).join('・'))}</div>` : ''}
       <div class="tags">${tags}${p._notes?`<span class="tag cnt">発言 ${p._notes}</span>`:''}</div>
     </div>`;
@@ -747,6 +762,8 @@ function fieldRow(k, v, aiKeys, key){
 
 function renderProfileView(p){
   const ai = norm(p.ai_filled).split(',').filter(Boolean);
+  const photoUrl = safeHttpUrl(p.photo_url);
+  const photo = photoUrl ? `<div class="box"><h3>顔写真</h3>${isDirectImageUrl(photoUrl)?`<img class="profile-photo" src="${esc(photoUrl)}" alt="${esc(p.name)}の顔写真" loading="lazy" onerror="this.remove()">`:''}<a class="photo-link" href="${esc(photoUrl)}" target="_blank" rel="noopener noreferrer">↗ 顔写真の掲載元を開く</a></div>` : '';
   let html = `<div class="box" id="profile-box"><h3>プロフィール<button class="btn-sm" id="btn-edit-profile">編集</button></h3>
     ${fieldRow('よみ', p.reading, ai, 'reading')}
     ${fieldRow('肩書', p.title, ai, 'title')}
@@ -755,6 +772,7 @@ function renderProfileView(p){
     ${fieldRow('生年', p.birth_year!=null?p.birth_year+'年':'', ai, 'birth_year')}
     ${fieldRow('専門', norm(p.fields).split(',').filter(Boolean).join('・'), ai, 'fields')}
   </div>`;
+  html += photo;
   if(norm(p.profile)){
     html += `<div class="box"><h3>人物像${ai.includes('profile')?'<span class="ai-mark">AIが補足</span>':''}</h3>
       <div style="font-size:14px">${esc(p.profile)}</div></div>`;
@@ -776,6 +794,9 @@ function renderProfileEdit(p){
     </div>
     <div class="label" style="margin-top:10px">専門（、区切りで複数）</div>
     <input class="txt" id="ed-fields" value="${esc(norm(p.fields).split(',').filter(Boolean).join('、'))}">
+    <div class="label" style="margin-top:10px">顔写真のURL</div>
+    <input class="txt" id="ed-photo-url" type="url" inputmode="url" placeholder="https://…（画像の直リンク、または掲載ページ）" value="${esc(p.photo_url||'')}">
+    <div class="hint">画像ファイルの直リンクなら写真を表示します。記事や公式プロフィールのURLなら「掲載元を開く」から確認できます。</div>
     <div class="label" style="margin-top:10px">人物像</div>
     <textarea id="ed-profile" style="min-height:90px">${esc(p.profile||'')}</textarea>
     <div class="row">
@@ -808,6 +829,12 @@ function wireProfileEdit(p){
   document.getElementById('btn-save-profile').onclick = async ()=>{
     const btn = document.getElementById('btn-save-profile'); btn.disabled = true;
     const numOrNull = v => { v = norm(v); return v ? parseInt(v,10) : null; };
+    const enteredPhotoUrl = norm($('#ed-photo-url').value);
+    if(enteredPhotoUrl && !safeHttpUrl(enteredPhotoUrl)){
+      alert('顔写真のURLは http:// または https:// で始まるものを入れてください。');
+      btn.disabled = false;
+      return;
+    }
     const patch = {
       reading: norm($('#ed-reading').value) || null,
       title: norm($('#ed-title').value) || null,
@@ -815,6 +842,7 @@ function wireProfileEdit(p){
       age: numOrNull($('#ed-age').value),
       birth_year: numOrNull($('#ed-birth').value),
       fields: norm($('#ed-fields').value).split(/、|,/).map(norm).filter(Boolean).join(',') || null,
+      photo_url: enteredPhotoUrl || null,
       profile: norm($('#ed-profile').value) || null,
       updated_at: new Date().toISOString()
     };
