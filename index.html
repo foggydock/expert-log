@@ -972,6 +972,7 @@ let spotlightPool = [];
 let spotlightLoaded = false;
 let spotlightLoadPromise = null;
 let spotlightRequestId = 0;
+let spotlightCurrentNote = null;
 
 function clearUserScopedState(){
   // ログアウト後や別アカウントへの切替時に、前の利用者の内容を画面・メモリから
@@ -980,6 +981,7 @@ function clearUserScopedState(){
   people = [];
   personNumbers = new Map();
   spotlightPool = [];
+  spotlightCurrentNote = null;
   spotlightLoaded = false;
   spotlightLoadPromise = null;
   pending = null;
@@ -1011,7 +1013,7 @@ function loadSpotlight(){
       // 全人物の新着順を同時に取得する。
       const [rows, numberRows] = await Promise.all([
         dbRetry(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)'), '振り返りの取得'),
-        dbRetry(()=>supa.from('exp_people').select('id').order('updated_at',{ascending:false}), '人物番号の取得')
+        dbRetry(()=>supa.from('exp_people').select('id,person_number'), '人物番号の取得')
       ]);
       // ログアウト・アカウント切替後に届いた、前の利用者向け通信結果は使わない。
       if(requestId !== spotlightRequestId || !currentUid) return;
@@ -1068,20 +1070,35 @@ function showRandomSpotlight(){
   const number = personNumbers.get(r.person_id);
   $('#sp-body').innerHTML = `<div class="sp-name">${number?`<span class="sp-number">No. ${number}</span>`:''}${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
     ${meta?`<div class="sp-meta">${esc(meta)}</div>`:''}
-    <div class="sp-quote">「${esc(r.text)}」</div>`;
+    <div class="sp-quote">「${esc(r.text)}」</div>
+    <div class="row"><button class="btn-sm" id="sp-mark-read">読んだ</button><span class="hint" id="sp-read-status"></span></div>`;
+  spotlightCurrentNote = r;
   $('#spotlight').dataset.pid = r.person_id;
   $('#spotlight').style.display = 'block';
-  markReviewed(r);
+  $('#sp-mark-read').onclick = ev=>{ ev.stopPropagation(); markReviewed(spotlightCurrentNote); };
 }
 
-function markReviewed(r){
+async function markReviewed(r){
+  if(!r) return;
+  const btn = $('#sp-mark-read');
+  const status = $('#sp-read-status');
+  if(!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = '記録中…';
   const now = new Date().toISOString();
-  // 次のシャッフルでも同じ人物を選ばないよう、その人の全発言を同時に更新する。
-  spotlightPool.filter(note => note.person_id === r.person_id)
-    .forEach(note => { note.last_reviewed_at = now; });
-  supa.from('exp_notes').update({last_reviewed_at:now}).eq('person_id', r.person_id).then(({error})=>{
-    if(error) console.error('last_reviewed_at更新失敗', error);
-  });
+  try{
+    await dbWrite(()=>supa.from('exp_notes').update({last_reviewed_at:now}).eq('person_id', r.person_id), '振り返り済みの記録');
+    // 次のシャッフルでは、読んだ人物の全発言を候補の後ろへ回す。
+    spotlightPool.filter(note => note.person_id === r.person_id)
+      .forEach(note => { note.last_reviewed_at = now; });
+    btn.textContent = '記録しました';
+    status.textContent = '次の振り返りに反映されます';
+  }catch(e){
+    btn.disabled = false;
+    btn.textContent = '読んだ';
+    status.textContent = e._uncertain ? '記録を確認できませんでした。次の表示で確認してください。' : '記録できませんでした。もう一度お試しください。';
+    console.error('last_reviewed_at更新失敗', e);
+  }
 }
 
 $('#spotlight').onclick = ()=>{
