@@ -321,7 +321,7 @@ function isDirectImageUrl(value){
 }
 let currentUid = null;
 let people = [];          // 一覧用にメモリへ持つ
-let personNumbers = new Map(); // 新着順の一覧で使う人物番号
+let personNumbers = new Map(); // DBで永続管理する人物番号
 let activeField = 'すべて';
 let searchQuery = '';
 let listMode = 'recent';
@@ -662,7 +662,7 @@ async function loadPeople(){
 }
 
 function setPersonNumbers(rows){
-  personNumbers = new Map((rows||[]).map((p, index) => [p.id, index + 1]));
+  personNumbers = new Map((rows||[]).map(p => [p.id, p.person_number]));
 }
 
 function renderChips(){
