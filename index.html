@@ -810,11 +810,15 @@ function wireProfileView(p){
   const btn = document.getElementById('btn-edit-profile');
   if(!btn) return;
   btn.onclick = ()=>{
-    // プロフィールと人物像の両ボックスを、編集フォーム1つに差し替える
+    // プロフィールに付随する顔写真・人物像のボックスを、編集フォーム1つに差し替える。
+    // 顔写真を更新した後に古い写真のボックスを残さない。
     const boxes = [...document.querySelectorAll('#sh-body .box')];
     const profileBox = document.getElementById('profile-box');
     const idx = boxes.indexOf(profileBox);
-    const extra = boxes.slice(idx+1).filter(b => b.querySelector('h3') && b.querySelector('h3').textContent.startsWith('人物像'));
+    const extra = boxes.slice(idx+1).filter(b => {
+      const heading = b.querySelector('h3')?.textContent || '';
+      return heading.startsWith('顔写真') || heading.startsWith('人物像');
+    });
     profileBox.outerHTML = renderProfileEdit(p);
     extra.forEach(b => b.remove());
     wireProfileEdit(p);
