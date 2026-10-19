@@ -45,7 +45,7 @@
   }
   textarea:focus,input:focus{outline:none;border-color:var(--accent)}
   .row{display:flex;gap:8px;align-items:center;margin-top:10px}
-  input.src,input.txt{
+  input.txt{
     flex:1;width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
     font-size:16px;background:var(--surface);font-family:inherit;color:var(--ink)
   }
@@ -56,6 +56,8 @@
     font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px
   }
   button.primary:disabled{opacity:.55}
+  .row button.primary{margin-top:0}
+  button.primary.secondary{background:var(--surface);color:var(--accent);border:1px solid var(--line)}
   .result{
     margin-top:14px;padding:13px 14px;border-radius:12px;background:var(--ok-soft);
     color:var(--ok);font-size:14px;display:none;border:1px solid #cfe8dd;white-space:pre-wrap
@@ -68,13 +70,16 @@
   .preview .pv-title{font-size:14px;font-weight:600;margin-bottom:10px}
   .pv-person{border-bottom:1px dashed var(--line);padding:10px 0}
   .pv-person:last-child{border-bottom:none}
-  .pv-person-head{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .pv-person-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;cursor:pointer}
   .pv-person-name{font-weight:600;font-size:15px}
   .pv-person-meta{font-size:12px;color:var(--muted)}
+  .pv-badge{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+  .pv-badge.new{background:var(--ok-soft);color:var(--ok)}
+  .pv-badge.warn{background:#f7e7e3;color:var(--danger);white-space:normal}
   .pv-stmts{margin:8px 0 0 24px;display:flex;flex-direction:column;gap:6px}
   .pv-stmt{display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;color:var(--ink)}
   .pv-stmt input{margin-top:3px}
-  .pv-person.off .pv-stmts,.pv-person.off .pv-person-name,.pv-person.off .pv-person-meta{opacity:.4}
+  .pv-person.off .pv-stmts,.pv-person.off .pv-person-name,.pv-person.off .pv-person-meta,.pv-person.off .pv-badge{opacity:.4}
   .spinner{
     width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);
     border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite
@@ -83,10 +88,6 @@
 
   /* 一覧 */
   .searchbar{display:flex;gap:8px;margin-bottom:10px}
-  .searchbar input{
-    flex:1;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
-    font-size:16px;background:var(--surface);font-family:inherit;color:var(--ink)
-  }
   .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch}
   .chip{
     flex:0 0 auto;padding:6px 12px;border:1px solid var(--line);border-radius:999px;
@@ -240,7 +241,7 @@
 <!-- ========== 一覧 ========== -->
 <section class="view" id="v-list"><div class="wrap">
   <div class="searchbar">
-    <input id="q" placeholder="名前・肩書・専門・発言で検索">
+    <input class="txt" id="q" placeholder="名前・肩書・専門・発言で検索">
   </div>
   <div class="list-mode" role="group" aria-label="一覧の表示方法">
     <button type="button" class="on" data-list-mode="recent">新着順</button>
@@ -257,7 +258,7 @@
   <div class="set-row">
     <div class="label">Gemini APIキー</div>
     <input class="txt" id="gkey" type="password" placeholder="AIza...">
-    <div class="row"><button class="primary" style="margin-top:0" id="btn-savekey">保存する</button></div>
+    <div class="row"><button class="primary" id="btn-savekey">保存する</button></div>
     <span class="saved" id="gsaved">保存しました</span>
     <div class="hint">キーはこの端末の中だけに保存されます。スマホとPCで別々に入れてください。</div>
   </div>
@@ -266,20 +267,20 @@
     <div class="hint">このURLをPCのブラウザで開き、同じメールアドレスでログインすると、スマホと同じ人物・発言が見られます。</div>
     <div class="row">
       <input class="txt" id="share-url" readonly value="https://expert-log.pages.dev/">
-      <button class="primary" id="btn-copy-url" style="margin-top:0;width:auto;padding:11px 16px;white-space:nowrap">コピー</button>
+      <button class="primary" id="btn-copy-url" style="width:auto;padding:11px 16px;white-space:nowrap">コピー</button>
     </div>
     <span class="saved" id="url-copied">コピーしました</span>
   </div>
   <div class="set-row">
     <div class="label">保存済みの発言を整形</div>
     <div class="hint">これまでに保存した発言を、話し言葉から整った書き言葉へ一括で整え直します（元の文章は上書きされます）。</div>
-    <button class="primary" id="btn-cleanup" style="background:var(--surface);color:var(--accent);border:1px solid var(--line)">発言を整形する</button>
+    <button class="primary secondary" id="btn-cleanup">発言を整形する</button>
     <div class="result" id="cleanup-result"></div>
   </div>
   <div class="set-row">
     <div class="label">アカウント</div>
     <div id="who" class="hint" style="margin-bottom:8px"></div>
-    <button class="primary" id="btn-logout" style="background:var(--surface);color:var(--danger);border:1px solid var(--line)">ログアウト</button>
+    <button class="primary secondary" id="btn-logout" style="color:var(--danger)">ログアウト</button>
   </div>
 </div></section>
 
@@ -319,6 +320,10 @@ function safeHttpUrl(value){
 function isDirectImageUrl(value){
   return /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(value||'');
 }
+// 専門・AI補足項目は「a,b,c」の形でDBに入っている
+const csv = s => norm(s).split(',').filter(Boolean);
+function flash(el){ el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),1800); }
+const errMsg = e => (e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message;
 let currentUid = null;
 let people = [];          // 一覧用にメモリへ持つ
 let personNumbers = new Map(); // DBで永続管理する人物番号
@@ -343,13 +348,12 @@ $('#gkey').value = localStorage.getItem('gemini_key') || '';
 $('#au-email').value = localStorage.getItem('last_email') || '';
 $('#btn-savekey').onclick = ()=>{
   localStorage.setItem('gemini_key', $('#gkey').value.trim());
-  const s=$('#gsaved'); s.classList.add('show'); setTimeout(()=>s.classList.remove('show'),1800);
+  flash($('#gsaved'));
 };
 
 /* ---------- 通信まわり（歴史ログと同じ作り） ---------- */
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const isNetErr = m => /load failed|failed to fetch|networkerror|network error|fetch|timeout|タイムアウト/i.test(m||'');
-function retryNote(msg){ $('#btn-label').textContent = msg; }
 
 function withTimeout(promise, ms, label){
   let timer;
@@ -378,6 +382,18 @@ async function dbRetry(fn, label){
   const e = new Error((lastErr && lastErr.message) || '失敗'); e._label = label; throw e;
 }
 
+// Supabase は1回の取得を最大1000行で打ち切るため、1000行ずつ続きを取り寄せて全件にする。
+// build は毎回新しい問い合わせを作る関数。ページの境目がずれないよう、並び順を必ず固定しておく。
+const PAGE_SIZE = 1000;
+async function selectAll(build, label){
+  const all = [];
+  for(let from = 0; ; from += PAGE_SIZE){
+    const rows = await dbRetry(()=>build().range(from, from + PAGE_SIZE - 1), label);
+    all.push(...rows);
+    if(rows.length < PAGE_SIZE) return all;
+  }
+}
+
 // 保存系はタイムアウト後に自動再試行しない。サーバー側では処理が完了していても
 // ブラウザだけが応答を受け取れないことがあり、再送すると同じ取り込みを重複保存するため。
 async function dbWrite(fn, label){
@@ -393,26 +409,31 @@ async function dbWrite(fn, label){
   }
 }
 
-async function geminiCall(prompt, responseSchema){
+// AIに問い合わせ、返事のJSONを読み取って返す。onRetry は再試行のたびに呼ばれる（表示の更新用）。
+async function geminiJson(prompt, responseSchema, onRetry){
   const key = localStorage.getItem('gemini_key');
   if(!key) throw new Error('NO_KEY');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
   const gen = { responseMimeType:'application/json', temperature:0.2 };
   if(responseSchema) gen.responseSchema = responseSchema;
   const body = JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig: gen });
-  let lastErr;
-  for(let attempt=0; attempt<4; attempt++){
-    if(attempt>0){ retryNote('混雑のため再試行中…'); await sleep(900*Math.pow(2,attempt-1)); }
-    let res;
-    try{ res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body}); }
+  let lastErr, res = null;
+  for(let attempt=0; attempt<4 && !res; attempt++){
+    if(attempt>0){ if(onRetry) onRetry(); await sleep(900*Math.pow(2,attempt-1)); }
+    let r;
+    try{ r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body}); }
     catch(e){ lastErr=e; continue; }
-    if(res.ok) return res;
-    const t = await res.text().catch(()=>'');
-    lastErr = new Error('GEMINI '+res.status+': '+t.slice(0,160));
-    if([429,500,503].includes(res.status)) continue;
-    throw lastErr;
+    if(r.ok){ res = r; break; }
+    const t = await r.text().catch(()=>'');
+    lastErr = new Error('GEMINI '+r.status+': '+t.slice(0,160));
+    if(![429,500,503].includes(r.status)) throw lastErr;
   }
-  throw lastErr;
+  if(!res) throw lastErr;
+  const json = await res.json();
+  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if(!text) throw new Error('AIの返事が空でした');
+  try{ return JSON.parse(text); }
+  catch(_e){ throw new Error('AIの返事を読み取れませんでした'); }
 }
 
 /* ---------- 抽出 ---------- */
@@ -488,12 +509,21 @@ function showResult(msg, isErr, isHtml){
 
 let pending = null;   // 保存前プレビュー中のデータ
 
+// 名前の比べ方：空白・中黒・全角半角の違いだけの名前は「似た名前」とみなす
+const nameKey = s => norm(s).normalize('NFKC').replace(/[\s・･]/g, '');
+function matchExisting(name, existing){
+  if(existing.some(e => e.name === norm(name))) return { kind:'same' };
+  const similar = existing.find(e => nameKey(e.name) === nameKey(name));
+  return similar ? { kind:'similar', name: similar.name } : { kind:'new' };
+}
+
 $('#btn-go').onclick = async ()=>{
   const raw = norm($('#raw').value);
   if(!raw){ showResult('先に文章を貼り付けてください。', true); return; }
   if(!localStorage.getItem('gemini_key')){ showResult('先に「設定」でGemini APIキーを保存してください。', true); return; }
 
   const btn = $('#btn-go');
+  const uid = currentUid;
   btn.disabled = true;
   $('#btn-label').innerHTML = '<span class="spinner"></span> 読み取り中…';
   $('#result').classList.remove('show');
@@ -501,34 +531,28 @@ $('#btn-go').onclick = async ()=>{
 
   try{
     // 既存の人物名（重複を作らせないためAIに渡す）
-    const existing = await dbRetry(()=>supa.from('exp_people').select('id,name,title,affiliation,birth_year,age,fields,profile,ai_filled'), '人物リストの取得');
-
-    const res = await geminiCall(buildPrompt(raw, existing), PERSON_SCHEMA);
-    const json = await res.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if(!text) throw new Error('AIの返事が空でした');
-    let parsed;
-    try{ parsed = JSON.parse(text); }
-    catch(e){ throw new Error('AIの返事を読み取れませんでした'); }
+    const existing = await selectAll(()=>supa.from('exp_people').select('name,title').order('id'), '人物リストの取得');
+    const parsed = await geminiJson(buildPrompt(raw, existing), PERSON_SCHEMA,
+      ()=>{ $('#btn-label').textContent = '混雑のため再試行中…'; });
+    // 読み取り中にログアウト・アカウント切替があったら、前の利用者向けの結果は使わない
+    if(uid !== currentUid) return;
     const found = (parsed.people||[]).filter(p=>norm(p.name));
     if(!found.length){ showResult('この文章からは人物を見つけられませんでした。', true); return; }
 
     pending = {
       raw,
-      srcTitle: '',
-      srcMedia: '',
-      srcDate: '',
-      existing,
       people: found.map(p => ({
         ...p,
         include: true,
+        match: matchExisting(p.name, existing),
         statements: (p.statements||[]).map(norm).filter(Boolean).map(t => ({ text: t, include: true }))
       }))
     };
     renderPreview();
   }catch(e){
+    if(uid !== currentUid) return;
     if(e.message === 'NO_KEY') showResult('設定でGemini APIキーを保存してください。', true);
-    else showResult((e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message, true);
+    else showResult(errMsg(e), true);
   }finally{
     btn.disabled = false;
     $('#btn-label').textContent = 'この文章から人物を取り出す';
@@ -547,10 +571,15 @@ function renderPreview(){
           <span>${esc(s.text)}</span>
         </label>`).join('')
       : '<div class="hint" style="margin-left:2px">発言なし</div>';
+    // 保存前に、すでに一覧にいる人か・表記ゆれで別人として増えそうな人かを見分けられるようにする
+    const badge = p.match.kind === 'same' ? '<span class="pv-badge">登録済み</span>'
+      : p.match.kind === 'similar' ? `<span class="pv-badge warn">似た名前「${esc(p.match.name)}」が登録済み</span>`
+      : '<span class="pv-badge new">新規</span>';
     return `<div class="pv-person${p.include?'':' off'}" data-pi="${pi}">
       <label class="pv-person-head">
         <input type="checkbox" class="pv-person-chk" data-pi="${pi}" ${p.include?'checked':''}>
         <span class="pv-person-name">${esc(p.name)}</span>
+        ${badge}
         ${meta?`<span class="pv-person-meta">${esc(meta)}</span>`:''}
       </label>
       <div class="pv-stmts">${stmts}</div>
@@ -559,8 +588,8 @@ function renderPreview(){
   $('#preview').innerHTML = `<div class="pv-title">内容を確認してから保存してください（誤って混ざった発言はチェックを外せます）</div>
     ${body}
     <div class="row">
-      <button class="primary" id="pv-save" style="margin-top:0">この内容で保存する</button>
-      <button class="primary" id="pv-cancel" style="margin-top:0;background:var(--surface);color:var(--accent);border:1px solid var(--line)">やめる</button>
+      <button class="primary" id="pv-save">この内容で保存する</button>
+      <button class="primary secondary" id="pv-cancel">やめる</button>
     </div>`;
   $('#preview').classList.add('show');
 
@@ -576,11 +605,15 @@ function renderPreview(){
 
 async function savePending(){
   if(!pending) return;
-  const btn = $('#pv-save');
-  btn.disabled = true; btn.textContent = '保存中…';
-
   const toSave = pending.people.filter(p => p.include);
-  if(!toSave.length){ alert('保存する人物が選ばれていません。'); btn.disabled = false; btn.textContent = 'この内容で保存する'; return; }
+  if(!toSave.length){ alert('保存する人物が選ばれていません。'); return; }
+
+  // 保存中にチェックの付け外しや再読み取りをすると、保存ボタンが作り直されて
+  // 二重に保存できてしまうため、保存が終わるまで操作をまとめて止める。
+  const controls = [...$('#preview').querySelectorAll('input,button'), $('#btn-go')];
+  controls.forEach(el => el.disabled = true);
+  const btn = $('#pv-save');
+  btn.textContent = '保存中…';
 
   try{
     // DB関数の中で、出どころ・人物・発言を1つのトランザクションとして保存する。
@@ -597,13 +630,9 @@ async function savePending(){
       ai_filled: (p.ai_filled||[]).map(norm).filter(Boolean),
       statements: p.statements.filter(s => s.include).map(s => norm(s.text)).filter(Boolean)
     }));
+    // 出どころの番組名・媒体・日付は入力欄を廃止したため、常に空で送る
     const saved = await dbWrite(()=>supa.rpc('exp_save_capture', {
-      p_source: {
-        title: pending.srcTitle || null,
-        media: pending.srcMedia || null,
-        aired_on: pending.srcDate || null,
-        raw_text: pending.raw
-      },
+      p_source: { title: null, media: null, aired_on: null, raw_text: pending.raw },
       p_people: payloadPeople
     }), 'まとめて保存');
 
@@ -620,14 +649,16 @@ async function savePending(){
     $('#raw').value = '';
     people = [];
     pending = null;
+    refreshSpotlight();
   }catch(e){
     if(e._uncertain){
       alert('保存の完了を確認できませんでした。二重登録を防ぐため自動では再試行していません。先に「一覧」で保存済みか確認してください。');
     }else{
-      alert((e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message);
+      alert(errMsg(e));
     }
-    btn.disabled = false;
     btn.textContent = 'この内容で保存する';
+  }finally{
+    controls.forEach(el => el.disabled = false);
   }
 }
 
@@ -642,21 +673,26 @@ document.querySelectorAll('[data-list-mode]').forEach(btn=>{
 });
 
 async function loadPeople(){
+  const uid = currentUid;
   $('#list').innerHTML = '<div class="empty">読み込み中…</div>';
   try{
-    people = await dbRetry(()=>supa.from('exp_people').select('*').order('updated_at',{ascending:false}), '一覧の取得');
-    setPersonNumbers(people);
+    const rows = await selectAll(()=>supa.from('exp_people').select('*').order('updated_at',{ascending:false}).order('id'), '一覧の取得');
     // 発言は件数の表示と検索に使うので、本文ごと持ってくる
-    const notes = await dbRetry(()=>supa.from('exp_notes').select('person_id,text'), '発言の取得');
+    const notes = await selectAll(()=>supa.from('exp_notes').select('person_id,text').order('id'), '発言の取得');
+    // ログアウト・アカウント切替後に届いた、前の利用者向けの結果は使わない
+    if(uid !== currentUid) return;
     const map = {};
     notes.forEach(n => {
       const m = map[n.person_id] || (map[n.person_id] = {n:0, t:''});
       m.n++; m.t += ' ' + (n.text||'');
     });
-    people.forEach(p => { p._notes = map[p.id]?.n || 0; p._notetext = map[p.id]?.t || ''; });
+    rows.forEach(p => { p._notes = map[p.id]?.n || 0; p._notetext = map[p.id]?.t || ''; });
+    people = rows;
+    setPersonNumbers(people);
     renderChips();
     renderList();
   }catch(e){
+    if(uid !== currentUid) return;
     $('#list').innerHTML = '<div class="empty">読み込めませんでした：'+esc(e.message)+'</div>';
   }
 }
@@ -667,7 +703,7 @@ function setPersonNumbers(rows){
 
 function renderChips(){
   const c = {};
-  people.forEach(p => norm(p.fields).split(',').filter(Boolean).forEach(f => c[f]=(c[f]||0)+1));
+  people.forEach(p => csv(p.fields).forEach(f => c[f]=(c[f]||0)+1));
   const list = ['すべて', ...Object.keys(c).sort((a,b)=>c[b]-c[a])];
   if(!list.includes(activeField)) activeField = 'すべて';
   $('#field-chips').innerHTML = list.map(f =>
@@ -680,7 +716,7 @@ function renderChips(){
 function renderList(){
   let rows = people;
   if(activeField !== 'すべて')
-    rows = rows.filter(p => norm(p.fields).split(',').includes(activeField));
+    rows = rows.filter(p => csv(p.fields).includes(activeField));
   if(searchQuery){
     const q = searchQuery.toLowerCase();
     rows = rows.filter(p => [p.name,p.reading,p.title,p.affiliation,p.fields,p.profile,p._notetext]
@@ -699,7 +735,7 @@ function renderList(){
   const card = p=>{
     const meta = [p.title, p.affiliation].filter(Boolean).join('／');
     const age = p.age!=null ? p.age+'歳' : (p.birth_year!=null ? p.birth_year+'年生まれ' : '');
-    const tags = norm(p.fields).split(',').filter(Boolean).map(f=>`<span class="tag">${esc(f)}</span>`).join('');
+    const tags = csv(p.fields).map(f=>`<span class="tag">${esc(f)}</span>`).join('');
     const photoUrl = safeHttpUrl(p.photo_url);
     const avatar = isDirectImageUrl(photoUrl) ? `<img class="photo-avatar" src="${esc(photoUrl)}" alt="${esc(p.name)}の顔写真" loading="lazy" onerror="this.remove()">` : '';
     return `<div class="card" data-id="${p.id}">
@@ -711,7 +747,7 @@ function renderList(){
   if(listMode === 'genre'){
     const byField = {};
     rows.forEach(p=>{
-      norm(p.fields).split(',').filter(Boolean).forEach(field=>{
+      csv(p.fields).forEach(field=>{
         (byField[field] ||= []).push(p);
       });
     });
@@ -729,23 +765,32 @@ function renderList(){
 
 /* ---------- 詳細 ---------- */
 let openId = null;
-$('#sh-back').onclick = ()=>{ $('#sheet').classList.remove('show'); openId=null; };
+// 詳細で人物・発言を変えたら、閉じたときに「ふと思い出す」を取り直す（削除済みの人や古い文を出さない）
+let spotlightDirty = false;
+function closeSheet(){
+  $('#sheet').classList.remove('show');
+  openId = null;
+  if(spotlightDirty) refreshSpotlight();
+}
+$('#sh-back').onclick = closeSheet;
 $('#sh-del').onclick = async ()=>{
   if(!openId) return;
-  const p = people.find(x=>x.id===openId);
-  if(!confirm(`「${p?p.name:''}」を発言ごと削除します。よろしいですか？`)) return;
+  // 振り返りから開いた人は一覧の読み込み前だと people に居ないため、表示中の名前を使う
+  if(!confirm(`「${$('#sh-title').textContent}」を発言ごと削除します。よろしいですか？`)) return;
   const btn = $('#sh-del');
   btn.disabled = true;
   try{
     // exp_notes.person_id は ON DELETE CASCADE。親だけを一度削除すれば、
     // 発言を含めてDB内で原子的に削除される。
     await dbWrite(()=>supa.from('exp_people').delete().eq('id', openId), '人物の削除');
-    $('#sheet').classList.remove('show'); openId=null;
+    spotlightDirty = true;
+    closeSheet();
     loadPeople();
   }catch(e){
     if(e._uncertain){
       // サーバーで削除済みか不明なため、画面を閉じて最新状態を取り直す。
-      $('#sheet').classList.remove('show'); openId=null;
+      spotlightDirty = true;
+      closeSheet();
       loadPeople();
       alert('削除の完了を確認できませんでした。最新の一覧を確認してください。');
     }else{
@@ -761,16 +806,16 @@ function fieldRow(k, v, aiKeys, key){
 }
 
 function renderProfileView(p){
-  const ai = norm(p.ai_filled).split(',').filter(Boolean);
+  const ai = csv(p.ai_filled);
   const photoUrl = safeHttpUrl(p.photo_url);
   const photo = photoUrl ? `<div class="box"><h3>顔写真</h3>${isDirectImageUrl(photoUrl)?`<img class="profile-photo" src="${esc(photoUrl)}" alt="${esc(p.name)}の顔写真" loading="lazy" onerror="this.remove()">`:''}<a class="photo-link" href="${esc(photoUrl)}" target="_blank" rel="noopener noreferrer">↗ 顔写真の掲載元を開く</a></div>` : '';
-  let html = `<div class="box" id="profile-box"><h3>プロフィール<button class="btn-sm" id="btn-edit-profile">編集</button></h3>
+  let html = `<div class="box"><h3>プロフィール<button class="btn-sm" id="btn-edit-profile">編集</button></h3>
     ${fieldRow('よみ', p.reading, ai, 'reading')}
     ${fieldRow('肩書', p.title, ai, 'title')}
     ${fieldRow('所属', p.affiliation, ai, 'affiliation')}
     ${fieldRow('年齢', p.age!=null?p.age+'歳':'', ai, 'age')}
     ${fieldRow('生年', p.birth_year!=null?p.birth_year+'年':'', ai, 'birth_year')}
-    ${fieldRow('専門', norm(p.fields).split(',').filter(Boolean).join('・'), ai, 'fields')}
+    ${fieldRow('専門', csv(p.fields).join('・'), ai, 'fields')}
   </div>`;
   html += photo;
   if(norm(p.profile)){
@@ -784,7 +829,7 @@ function renderProfileView(p){
 }
 
 function renderProfileEdit(p){
-  return `<div class="box" id="profile-box"><h3>プロフィールを編集</h3>
+  return `<div class="box"><h3>プロフィールを編集</h3>
     <div class="label">よみ</div><input class="txt" id="ed-reading" value="${esc(p.reading||'')}">
     <div class="label">肩書</div><input class="txt" id="ed-title" value="${esc(p.title||'')}">
     <div class="label">所属</div><input class="txt" id="ed-affiliation" value="${esc(p.affiliation||'')}">
@@ -793,46 +838,42 @@ function renderProfileEdit(p){
       <input class="txt" id="ed-birth" placeholder="生年（西暦）" inputmode="numeric" value="${p.birth_year!=null?p.birth_year:''}">
     </div>
     <div class="label" style="margin-top:10px">専門（、区切りで複数）</div>
-    <input class="txt" id="ed-fields" value="${esc(norm(p.fields).split(',').filter(Boolean).join('、'))}">
+    <input class="txt" id="ed-fields" value="${esc(csv(p.fields).join('、'))}">
     <div class="label" style="margin-top:10px">顔写真のURL</div>
     <input class="txt" id="ed-photo-url" type="url" inputmode="url" placeholder="https://…（画像の直リンク、または掲載ページ）" value="${esc(p.photo_url||'')}">
     <div class="hint">画像ファイルの直リンクなら写真を表示します。記事や公式プロフィールのURLなら「掲載元を開く」から確認できます。</div>
     <div class="label" style="margin-top:10px">人物像</div>
     <textarea id="ed-profile" style="min-height:90px">${esc(p.profile||'')}</textarea>
     <div class="row">
-      <button class="primary" id="btn-save-profile" style="margin-top:0">保存</button>
-      <button class="primary" id="btn-cancel-profile" style="margin-top:0;background:var(--surface);color:var(--accent);border:1px solid var(--line)">キャンセル</button>
+      <button class="primary" id="btn-save-profile">保存</button>
+      <button class="primary secondary" id="btn-cancel-profile">キャンセル</button>
     </div>
   </div>`;
 }
 
-function wireProfileView(p){
-  const btn = document.getElementById('btn-edit-profile');
-  if(!btn) return;
-  btn.onclick = ()=>{
-    // プロフィールに付随する顔写真・人物像のボックスを、編集フォーム1つに差し替える。
-    // 顔写真を更新した後に古い写真のボックスを残さない。
-    const boxes = [...document.querySelectorAll('#sh-body .box')];
-    const profileBox = document.getElementById('profile-box');
-    const idx = boxes.indexOf(profileBox);
-    const extra = boxes.slice(idx+1).filter(b => {
-      const heading = b.querySelector('h3')?.textContent || '';
-      return heading.startsWith('顔写真') || heading.startsWith('人物像');
-    });
-    profileBox.outerHTML = renderProfileEdit(p);
-    extra.forEach(b => b.remove());
+// プロフィール・顔写真・人物像・AI補足の注意書きは #profile-area にまとめて置き、
+// 表示と編集フォームを丸ごと入れ替える（古い写真や注意書きが重複して残らないように）。
+function showProfileView(p){
+  $('#profile-area').innerHTML = renderProfileView(p);
+  $('#btn-edit-profile').onclick = ()=>{
+    $('#profile-area').innerHTML = renderProfileEdit(p);
     wireProfileEdit(p);
   };
 }
 
 function wireProfileEdit(p){
-  document.getElementById('btn-cancel-profile').onclick = ()=>{
-    document.getElementById('profile-box').outerHTML = renderProfileView(p);
-    wireProfileView(p);
-  };
-  document.getElementById('btn-save-profile').onclick = async ()=>{
-    const btn = document.getElementById('btn-save-profile'); btn.disabled = true;
-    const numOrNull = v => { v = norm(v); return v ? parseInt(v,10) : null; };
+  $('#btn-cancel-profile').onclick = ()=> showProfileView(p);
+  $('#btn-save-profile').onclick = async ()=>{
+    const btn = $('#btn-save-profile'); btn.disabled = true;
+    // 全角数字も受け付ける。数字として読めない入力は、黙って空欄にせず入れ直してもらう
+    const numOrNull = v => { v = norm(v).normalize('NFKC'); return v ? parseInt(v,10) : null; };
+    const age = numOrNull($('#ed-age').value);
+    const birthYear = numOrNull($('#ed-birth').value);
+    if(Number.isNaN(age) || Number.isNaN(birthYear)){
+      alert('年齢・生年は数字で入れてください。');
+      btn.disabled = false;
+      return;
+    }
     const enteredPhotoUrl = norm($('#ed-photo-url').value);
     if(enteredPhotoUrl && !safeHttpUrl(enteredPhotoUrl)){
       alert('顔写真のURLは http:// または https:// で始まるものを入れてください。');
@@ -843,24 +884,27 @@ function wireProfileEdit(p){
       reading: norm($('#ed-reading').value) || null,
       title: norm($('#ed-title').value) || null,
       affiliation: norm($('#ed-affiliation').value) || null,
-      age: numOrNull($('#ed-age').value),
-      birth_year: numOrNull($('#ed-birth').value),
+      age,
+      birth_year: birthYear,
       fields: norm($('#ed-fields').value).split(/、|,/).map(norm).filter(Boolean).join(',') || null,
       photo_url: enteredPhotoUrl || null,
       profile: norm($('#ed-profile').value) || null,
       updated_at: new Date().toISOString()
     };
-    // 手で直した項目は、もう「AIの推測のまま」ではないので補足マークを外す
-    const aiMarks = new Set(norm(p.ai_filled).split(',').filter(Boolean));
-    ['title','affiliation','birth_year','age','fields','profile'].forEach(k => aiMarks.delete(k));
+    // 手で直した項目は、もう「AIの推測のまま」ではないので補足マークを外す。
+    // 変えていない項目のマークは残す（写真だけ直したときに、AIの推測が本文由来に見えないように）。
+    const aiMarks = new Set(csv(p.ai_filled));
+    ['title','affiliation','birth_year','age','fields','profile']
+      .filter(k => String(patch[k] ?? '') !== String(p[k] ?? ''))
+      .forEach(k => aiMarks.delete(k));
     patch.ai_filled = [...aiMarks].join(',') || null;
     try{
       await dbRetry(()=>supa.from('exp_people').update(patch).eq('id', p.id), 'プロフィールの更新');
       Object.assign(p, patch);
       const idx = people.findIndex(x=>x.id===p.id);
       if(idx>=0) people[idx] = Object.assign({}, people[idx], patch);
-      document.getElementById('profile-box').outerHTML = renderProfileView(p);
-      wireProfileView(p);
+      spotlightDirty = true;
+      showProfileView(p);
     }catch(e){
       alert('保存できませんでした：'+e.message);
     }finally{
@@ -874,15 +918,19 @@ async function openPerson(id){
   let p = people.find(x=>x.id===id);
   if(!p){
     try{ p = await dbRetry(()=>supa.from('exp_people').select('*').eq('id',id).single(), '人物の取得'); }
-    catch(e){ return; }
+    catch(e){
+      if(openId === id){ openId = null; alert('人物を開けませんでした：'+e.message); }
+      return;
+    }
+    // 取得を待つ間に閉じた・別の人を開いた場合は、古い結果で画面を上書きしない
+    if(openId !== id) return;
   }
-  if(!p) return;
   $('#sh-title').textContent = p.name;
   $('#sh-body').innerHTML = '<div class="empty">読み込み中…</div>';
   $('#sheet').classList.add('show');
   window.scrollTo(0,0);
 
-  let html = renderProfileView(p);
+  let html = '<div id="profile-area"></div>';
 
   try{
     const notes = await dbRetry(()=>supa.from('exp_notes').select('*').eq('person_id',id).order('created_at',{ascending:false}), '発言の取得');
@@ -892,7 +940,8 @@ async function openPerson(id){
       const srcs = await dbRetry(()=>supa.from('exp_sources').select('id,title,media,aired_on').in('id', srcIds), '出どころの取得');
       srcs.forEach(s => srcMap[s.id] = s);
     }
-    html += `<div class="box"><h3>この人が言っていたこと（${notes.length}）</h3>` +
+    if(openId !== id) return;
+    html += `<div class="box"><h3 id="notes-heading">この人が言っていたこと（${notes.length}）</h3>` +
       (notes.length ? notes.map(n=>{
         const s = srcMap[n.source_id];
         const label = s ? [s.title, s.media, s.aired_on].filter(Boolean).join('／') : '';
@@ -906,7 +955,7 @@ async function openPerson(id){
         </div>`;
       }).join('') : '<div class="hint">まだありません</div>') + `</div>`;
     $('#sh-body').innerHTML = html;
-    wireProfileView(p);
+    showProfileView(p);
     $('#sh-body').querySelectorAll('.btn-note-del').forEach(btn=>{
       btn.onclick = async ()=>{
         if(!confirm('この発言を削除します。よろしいですか？')) return;
@@ -914,6 +963,10 @@ async function openPerson(id){
         try{
           await dbRetry(()=>supa.from('exp_notes').delete().eq('id', btn.dataset.noteId), '発言の削除');
           btn.closest('.note').remove();
+          spotlightDirty = true;
+          const left = $('#sh-body').querySelectorAll('.note').length;
+          $('#notes-heading').textContent = `この人が言っていたこと（${left}）`;
+          if(!left) $('#notes-heading').insertAdjacentHTML('afterend', '<div class="hint">まだありません</div>');
         }catch(e){
           alert('削除できませんでした：'+e.message);
           btn.disabled = false;
@@ -930,6 +983,7 @@ async function openPerson(id){
         try{
           const n = notes.find(x=>x.id===btn.dataset.noteId);
           await dbRetry(()=>supa.from('exp_notes').update({text:n.text_before_cleanup, text_before_cleanup:null}).eq('id', btn.dataset.noteId), '発言の復元');
+          spotlightDirty = true;
           openPerson(openId);
         }catch(e){
           alert('戻せませんでした：'+e.message);
@@ -938,8 +992,9 @@ async function openPerson(id){
       };
     });
   }catch(e){
+    if(openId !== id) return;
     $('#sh-body').innerHTML = html + '<div class="empty">発言を読み込めませんでした：'+esc(e.message)+'</div>';
-    wireProfileView(p);
+    showProfileView(p);
   }
 }
 
@@ -963,6 +1018,7 @@ function startNoteEdit(noteEl){
     saveBtn.disabled = true;
     try{
       await dbRetry(()=>supa.from('exp_notes').update({text:nv}).eq('id', id), '発言の更新');
+      spotlightDirty = true;
       openPerson(openId);
     }catch(e){
       alert('保存できませんでした：'+e.message);
@@ -988,18 +1044,30 @@ function clearUserScopedState(){
   spotlightCurrentNote = null;
   spotlightLoaded = false;
   spotlightLoadPromise = null;
+  spotlightDirty = false;
   pending = null;
   openId = null;
+  searchQuery = '';
+  activeField = 'すべて';
+  $('#q').value = '';
   $('#list').innerHTML = '';
   $('#list-summary').textContent = '';
   $('#field-chips').innerHTML = '';
   $('#spotlight').style.display = 'none';
+  delete $('#spotlight').dataset.pid;
   $('#sp-body').innerHTML = '';
   $('#sheet').classList.remove('show');
   $('#raw').value = '';
   $('#result').classList.remove('show');
   $('#preview').classList.remove('show');
   $('#preview').innerHTML = '';
+  $('#cleanup-result').classList.remove('show');
+  $('#who').textContent = '';
+}
+
+function refreshSpotlight(){
+  spotlightDirty = false;
+  if(currentUid) loadSpotlight();
 }
 
 function loadSpotlight(){
@@ -1016,8 +1084,8 @@ function loadSpotlight(){
       // 一覧を開いていない状態でも同じ No. を出せるよう、番号の基準となる
       // 全人物の新着順を同時に取得する。
       const [rows, numberRows] = await Promise.all([
-        dbRetry(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)'), '振り返りの取得'),
-        dbRetry(()=>supa.from('exp_people').select('id,person_number'), '人物番号の取得')
+        selectAll(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)').order('id'), '振り返りの取得'),
+        selectAll(()=>supa.from('exp_people').select('id,person_number').order('id'), '人物番号の取得')
       ]);
       // ログアウト・アカウント切替後に届いた、前の利用者向け通信結果は使わない。
       if(requestId !== spotlightRequestId || !currentUid) return;
@@ -1040,6 +1108,9 @@ function loadSpotlight(){
   return spotlightLoadPromise;
 }
 
+// 未振り返りは -Infinity（いちばん古い扱い）
+const reviewedAt = note => note.last_reviewed_at ? new Date(note.last_reviewed_at).getTime() : -Infinity;
+
 function showRandomSpotlight(){
   if(!spotlightPool.length){ $('#spotlight').style.display = 'none'; return; }
   // 発言ではなく人物単位で間隔を空ける。同じ人物の別の発言が未振り返りでも、
@@ -1052,9 +1123,7 @@ function showRandomSpotlight(){
   });
   const sorted = [...byPerson.values()].map(notes => {
     // 人物の最終表示時刻は、その人の発言のうち最も新しい時刻を使う。
-    const lastReviewed = Math.max(...notes.map(note =>
-      note.last_reviewed_at ? new Date(note.last_reviewed_at).getTime() : -Infinity
-    ));
+    const lastReviewed = Math.max(...notes.map(reviewedAt));
     return {notes, lastReviewed};
   }).sort((a,b)=>{
     if(a.lastReviewed !== b.lastReviewed) return a.lastReviewed - b.lastReviewed;
@@ -1064,11 +1133,7 @@ function showRandomSpotlight(){
   const pool = sorted.slice(0, poolSize);
   const person = pool[Math.floor(Math.random()*pool.length)];
   // 選ばれた人物の中では、まだ見ていない発言を優先する。
-  const r = [...person.notes].sort((a,b)=>{
-    const ta = a.last_reviewed_at ? new Date(a.last_reviewed_at).getTime() : -Infinity;
-    const tb = b.last_reviewed_at ? new Date(b.last_reviewed_at).getTime() : -Infinity;
-    return ta - tb || Math.random()-0.5;
-  })[0];
+  const r = [...person.notes].sort((a,b)=> reviewedAt(a) - reviewedAt(b) || Math.random()-0.5)[0];
   const p = r.exp_people;
   const meta = [p.title, p.affiliation].filter(Boolean).join('／');
   const number = personNumbers.get(r.person_id);
@@ -1115,7 +1180,7 @@ $('#sp-shuffle').onclick = (e)=>{ e.stopPropagation(); showRandomSpotlight(); };
 $('#btn-copy-url').onclick = async ()=>{
   try{
     await navigator.clipboard.writeText($('#share-url').value);
-    const s = $('#url-copied'); s.classList.add('show'); setTimeout(()=>s.classList.remove('show'),1800);
+    flash($('#url-copied'));
   }catch(e){
     $('#share-url').select();
     document.execCommand('copy');
@@ -1141,14 +1206,14 @@ $('#btn-cleanup').onclick = async ()=>{
   if(!localStorage.getItem('gemini_key')){
     const r = $('#cleanup-result'); r.textContent = '先にGemini APIキーを保存してください。'; r.classList.add('show','err'); return;
   }
-  if(!confirm('保存済みの発言をすべて書き言葉に整形し直します。元の文章は上書きされ、元に戻せません。よろしいですか？')) return;
+  if(!confirm('保存済みの発言をすべて書き言葉に整形し直します。元の文章は上書きされます（人物詳細の「整形前に戻す」で、1件ずつ直前の文章に戻せます）。よろしいですか？')) return;
 
   const btn = $('#btn-cleanup'); btn.disabled = true;
   const res = $('#cleanup-result'); res.classList.remove('err'); res.classList.add('show');
   res.textContent = '整形中…';
 
   try{
-    const notes = await dbRetry(()=>supa.from('exp_notes').select('id,person_id,text'), '発言の取得');
+    const notes = await selectAll(()=>supa.from('exp_notes').select('id,person_id,text').order('id'), '発言の取得');
     const byPerson = {};
     notes.forEach(n => { (byPerson[n.person_id] = byPerson[n.person_id] || []).push(n); });
 
@@ -1157,11 +1222,10 @@ $('#btn-cleanup').onclick = async ()=>{
     for(const pid of Object.keys(byPerson)){
       const group = byPerson[pid];
       try{
-        const r = await geminiCall(buildCleanupPrompt(group.map(n=>n.text)), CLEANUP_SCHEMA);
-        const json = await r.json();
-        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-        const parsed = JSON.parse(text);
+        const parsed = await geminiJson(buildCleanupPrompt(group.map(n=>n.text)), CLEANUP_SCHEMA);
         const arr = parsed.statements || [];
+        // AIが件数を変えて返すと、i番目の文が別の発言に入れ替わってしまうため、その人の分は丸ごと見送る
+        if(arr.length !== group.length) throw new Error('整形後の件数が元と合いません');
         for(let i=0;i<group.length;i++){
           const nv = norm(arr[i]);
           if(nv && nv !== group[i].text){
@@ -1176,8 +1240,8 @@ $('#btn-cleanup').onclick = async ()=>{
     }
     res.textContent = failed ? `完了：${done}件を整形しました（${failed}件は失敗）` : `完了：${done}件を整形しました`;
     res.classList.toggle('err', done===0 && failed>0);
-    spotlightLoaded = false;
     people = [];
+    refreshSpotlight();
   }catch(e){
     res.textContent = '失敗しました：'+e.message; res.classList.add('err');
   }finally{
@@ -1189,11 +1253,14 @@ $('#btn-cleanup').onclick = async ()=>{
 const authScreen = $('#auth');
 function authMsg(m, ok){ const el=$('#au-msg'); el.textContent=m; el.classList.toggle('ok', !!ok); }
 
-supa.auth.onAuthStateChange((_e, session)=>{
+// ログイン状態の変化（onAuthStateChange）と起動時の確認（getSession）の両方から呼ぶ
+function applySession(session){
   if(session && session.user){
     if(currentUid && currentUid !== session.user.id) clearUserScopedState();
     currentUid = session.user.id;
     localStorage.setItem('last_email', session.user.email||'');
+    // ログイン後はパスワードを入力欄に残さない（ログアウトした画面に残り、他の人がそのまま入れてしまうため）
+    $('#au-pass').value = '';
     authScreen.classList.add('hide');
     $('#who').textContent = 'ログイン中：'+(session.user.email||'');
     if(!spotlightLoaded) loadSpotlight();
@@ -1202,21 +1269,9 @@ supa.auth.onAuthStateChange((_e, session)=>{
     currentUid = null;
     authScreen.classList.remove('hide');
   }
-});
-
-(async ()=>{
-  const { data } = await supa.auth.getSession();
-  if(data.session && data.session.user){
-    if(currentUid && currentUid !== data.session.user.id) clearUserScopedState();
-    currentUid = data.session.user.id;
-    authScreen.classList.add('hide');
-    $('#who').textContent = 'ログイン中：'+(data.session.user.email||'');
-    if(!spotlightLoaded) loadSpotlight();
-  }else{
-    clearUserScopedState();
-    authScreen.classList.remove('hide');
-  }
-})();
+}
+supa.auth.onAuthStateChange((_e, session)=> applySession(session));
+supa.auth.getSession().then(({ data }) => applySession(data.session));
 
 $('#au-form').onsubmit = async (ev)=>{
   ev.preventDefault();
