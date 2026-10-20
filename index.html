@@ -311,6 +311,8 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
 const $ = s => document.querySelector(s);
 const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm = s => (s||'').trim();
+// 画面の data-id は文字列、DBのIDは数値のこともあるため、型をそろえて比べる
+const sameId = (a, b) => String(a) === String(b);
 function safeHttpUrl(value){
   try{
     const url = new URL(norm(value));
@@ -326,7 +328,6 @@ function flash(el){ el.classList.add('show'); setTimeout(()=>el.classList.remove
 const errMsg = e => (e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message;
 let currentUid = null;
 let people = [];          // 一覧用にメモリへ持つ
-let personNumbers = new Map(); // DBで永続管理する人物番号
 let activeField = 'すべて';
 let searchQuery = '';
 let listMode = 'recent';
@@ -413,7 +414,8 @@ async function dbWrite(fn, label){
 async function geminiJson(prompt, responseSchema, onRetry){
   const key = localStorage.getItem('gemini_key');
   if(!key) throw new Error('NO_KEY');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
+  // キーはURLに含めず、ヘッダーで送る
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const gen = { responseMimeType:'application/json', temperature:0.2 };
   if(responseSchema) gen.responseSchema = responseSchema;
   const body = JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig: gen });
@@ -421,7 +423,7 @@ async function geminiJson(prompt, responseSchema, onRetry){
   for(let attempt=0; attempt<4 && !res; attempt++){
     if(attempt>0){ if(onRetry) onRetry(); await sleep(900*Math.pow(2,attempt-1)); }
     let r;
-    try{ r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body}); }
+    try{ r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body}); }
     catch(e){ lastErr=e; continue; }
     if(r.ok){ res = r; break; }
     const t = await r.text().catch(()=>'');
@@ -614,6 +616,7 @@ async function savePending(){
   controls.forEach(el => el.disabled = true);
   const btn = $('#pv-save');
   btn.textContent = '保存中…';
+  const uid = currentUid;
 
   try{
     // DB関数の中で、出どころ・人物・発言を1つのトランザクションとして保存する。
@@ -635,6 +638,8 @@ async function savePending(){
       p_source: { title: null, media: null, aired_on: null, raw_text: pending.raw },
       p_people: payloadPeople
     }), 'まとめて保存');
+    // 保存中にログアウト・アカウント切替があったら、保存した人物名を次の人の画面に出さない
+    if(uid !== currentUid) return;
 
     const added = (saved.added||[]).map(x => x.name);
     const updated = (saved.updated||[]).map(x => x.name);
@@ -651,6 +656,7 @@ async function savePending(){
     pending = null;
     refreshSpotlight();
   }catch(e){
+    if(uid !== currentUid) return;
     if(e._uncertain){
       alert('保存の完了を確認できませんでした。二重登録を防ぐため自動では再試行していません。先に「一覧」で保存済みか確認してください。');
     }else{
@@ -672,15 +678,19 @@ document.querySelectorAll('[data-list-mode]').forEach(btn=>{
   };
 });
 
+let peopleRequestId = 0;
 async function loadPeople(){
   const uid = currentUid;
-  $('#list').innerHTML = '<div class="empty">読み込み中…</div>';
+  // 続けて呼ばれたとき、先に始めた古い取得の結果で新しい一覧を上書きしない
+  const requestId = ++peopleRequestId;
+  // 表示中の一覧は取り直す間も残す（詳細から戻ったとき、スクロール位置が先頭へ飛ばないように）
+  if(!people.length) $('#list').innerHTML = '<div class="empty">読み込み中…</div>';
   try{
     const rows = await selectAll(()=>supa.from('exp_people').select('*').order('updated_at',{ascending:false}).order('id'), '一覧の取得');
     // 発言は件数の表示と検索に使うので、本文ごと持ってくる
     const notes = await selectAll(()=>supa.from('exp_notes').select('person_id,text').order('id'), '発言の取得');
     // ログアウト・アカウント切替後に届いた、前の利用者向けの結果は使わない
-    if(uid !== currentUid) return;
+    if(uid !== currentUid || requestId !== peopleRequestId) return;
     const map = {};
     notes.forEach(n => {
       const m = map[n.person_id] || (map[n.person_id] = {n:0, t:''});
@@ -688,17 +698,12 @@ async function loadPeople(){
     });
     rows.forEach(p => { p._notes = map[p.id]?.n || 0; p._notetext = map[p.id]?.t || ''; });
     people = rows;
-    setPersonNumbers(people);
     renderChips();
     renderList();
   }catch(e){
-    if(uid !== currentUid) return;
+    if(uid !== currentUid || requestId !== peopleRequestId) return;
     $('#list').innerHTML = '<div class="empty">読み込めませんでした：'+esc(e.message)+'</div>';
   }
-}
-
-function setPersonNumbers(rows){
-  personNumbers = new Map((rows||[]).map(p => [p.id, p.person_number]));
 }
 
 function renderChips(){
@@ -726,8 +731,7 @@ function renderList(){
   $('#list-summary').innerHTML = total
     ? `登録済み <strong>${total}人</strong>${rows.length !== total ? ` <span>（表示 ${rows.length}人）</span>` : ''}`
     : '登録済み <strong>0人</strong>';
-  // 番号は新着順の全登録者リストを基準にする。ジャンル別では同じ人物が複数の
-  // ジャンルに出るため、表示ごとに採番せず同じ No. を保つ。
+  // No. はDBで人物ごとに固定した番号。並び順やジャンル別の表示位置では変わらない。
   if(!rows.length){
     $('#list').innerHTML = '<div class="empty">'+(people.length?'見つかりませんでした':'まだ誰もいません。「記録」から文章を貼ってください。')+'</div>';
     return;
@@ -739,22 +743,25 @@ function renderList(){
     const photoUrl = safeHttpUrl(p.photo_url);
     const avatar = isDirectImageUrl(photoUrl) ? `<img class="photo-avatar" src="${esc(photoUrl)}" alt="${esc(p.name)}の顔写真" loading="lazy" onerror="this.remove()">` : '';
     return `<div class="card" data-id="${p.id}">
-      <div class="card-head"><span class="no">No. ${personNumbers.get(p.id)}</span>${avatar}<div class="nm">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div></div>
+      <div class="card-head"><span class="no">No. ${p.person_number}</span>${avatar}<div class="nm">${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div></div>
       ${meta||age ? `<div class="mt">${esc([meta,age].filter(Boolean).join('・'))}</div>` : ''}
       <div class="tags">${tags}${p._notes?`<span class="tag cnt">発言 ${p._notes}</span>`:''}</div>
     </div>`;
   };
   if(listMode === 'genre'){
     const byField = {};
+    const noField = [];
     rows.forEach(p=>{
-      csv(p.fields).forEach(field=>{
+      const fields = csv(p.fields);
+      if(!fields.length) noField.push(p);
+      fields.forEach(field=>{
         (byField[field] ||= []).push(p);
       });
     });
     const genres = Object.entries(byField).sort((a,b)=>b[1].length-a[1].length || a[0].localeCompare(b[0], 'ja'));
-    $('#list').innerHTML = genres.length
-      ? genres.map(([field, members])=>`<section class="genre-section"><h2 class="genre-heading">${esc(field)}<span class="count">${members.length}人</span></h2>${members.map(card).join('')}</section>`).join('')
-      : '<div class="empty">ジャンルがまだ登録されていません。</div>';
+    // 専門が空の人もジャンル別で見失わないよう、最後にまとめて出す
+    if(noField.length) genres.push(['ジャンル未設定', noField]);
+    $('#list').innerHTML = genres.map(([field, members])=>`<section class="genre-section"><h2 class="genre-heading">${esc(field)}<span class="count">${members.length}人</span></h2>${members.map(card).join('')}</section>`).join('');
   }else{
     $('#list').innerHTML = rows.map(card).join('');
   }
@@ -765,12 +772,18 @@ function renderList(){
 
 /* ---------- 詳細 ---------- */
 let openId = null;
-// 詳細で人物・発言を変えたら、閉じたときに「ふと思い出す」を取り直す（削除済みの人や古い文を出さない）
-let spotlightDirty = false;
+// 詳細で人物・発言を変えたら、閉じたときに「ふと思い出す」と一覧を取り直す
+// （削除済みの人や古い文・肩書・発言数を出さない）
+let sheetDirty = false;
 function closeSheet(){
   $('#sheet').classList.remove('show');
   openId = null;
-  if(spotlightDirty) refreshSpotlight();
+  if(sheetDirty){
+    sheetDirty = false;
+    refreshSpotlight();
+    // 一覧以外の画面にいるときは、次に一覧を開いたときに取り直される
+    if($('#v-list').classList.contains('active')) loadPeople();
+  }
 }
 $('#sh-back').onclick = closeSheet;
 $('#sh-del').onclick = async ()=>{
@@ -778,20 +791,22 @@ $('#sh-del').onclick = async ()=>{
   // 振り返りから開いた人は一覧の読み込み前だと people に居ないため、表示中の名前を使う
   if(!confirm(`「${$('#sh-title').textContent}」を発言ごと削除します。よろしいですか？`)) return;
   const btn = $('#sh-del');
+  const deletedId = openId;
   btn.disabled = true;
   try{
     // exp_notes.person_id は ON DELETE CASCADE。親だけを一度削除すれば、
     // 発言を含めてDB内で原子的に削除される。
-    await dbWrite(()=>supa.from('exp_people').delete().eq('id', openId), '人物の削除');
-    spotlightDirty = true;
+    await dbWrite(()=>supa.from('exp_people').delete().eq('id', deletedId), '人物の削除');
+    // 取り直しが終わるまでの間も、消した人を一覧に出さない
+    people = people.filter(x => !sameId(x.id, deletedId));
+    renderList();
+    sheetDirty = true;
     closeSheet();
-    loadPeople();
   }catch(e){
     if(e._uncertain){
       // サーバーで削除済みか不明なため、画面を閉じて最新状態を取り直す。
-      spotlightDirty = true;
+      sheetDirty = true;
       closeSheet();
-      loadPeople();
       alert('削除の完了を確認できませんでした。最新の一覧を確認してください。');
     }else{
       alert('削除できませんでした：'+e.message);
@@ -886,7 +901,7 @@ function wireProfileEdit(p){
       affiliation: norm($('#ed-affiliation').value) || null,
       age,
       birth_year: birthYear,
-      fields: norm($('#ed-fields').value).split(/、|,/).map(norm).filter(Boolean).join(',') || null,
+      fields: norm($('#ed-fields').value).split(/[、,，]/).map(norm).filter(Boolean).join(',') || null,
       photo_url: enteredPhotoUrl || null,
       profile: norm($('#ed-profile').value) || null,
       updated_at: new Date().toISOString()
@@ -903,7 +918,7 @@ function wireProfileEdit(p){
       Object.assign(p, patch);
       const idx = people.findIndex(x=>x.id===p.id);
       if(idx>=0) people[idx] = Object.assign({}, people[idx], patch);
-      spotlightDirty = true;
+      sheetDirty = true;
       showProfileView(p);
     }catch(e){
       alert('保存できませんでした：'+e.message);
@@ -915,7 +930,7 @@ function wireProfileEdit(p){
 
 async function openPerson(id){
   openId = id;
-  let p = people.find(x=>x.id===id);
+  let p = people.find(x=>sameId(x.id, id));
   if(!p){
     try{ p = await dbRetry(()=>supa.from('exp_people').select('*').eq('id',id).single(), '人物の取得'); }
     catch(e){
@@ -928,7 +943,8 @@ async function openPerson(id){
   $('#sh-title').textContent = p.name;
   $('#sh-body').innerHTML = '<div class="empty">読み込み中…</div>';
   $('#sheet').classList.add('show');
-  window.scrollTo(0,0);
+  // 詳細だけを先頭に戻す（後ろの一覧のスクロール位置は、戻ったときのために残す）
+  $('#sheet').scrollTop = 0;
 
   let html = '<div id="profile-area"></div>';
 
@@ -963,7 +979,7 @@ async function openPerson(id){
         try{
           await dbRetry(()=>supa.from('exp_notes').delete().eq('id', btn.dataset.noteId), '発言の削除');
           btn.closest('.note').remove();
-          spotlightDirty = true;
+          sheetDirty = true;
           const left = $('#sh-body').querySelectorAll('.note').length;
           $('#notes-heading').textContent = `この人が言っていたこと（${left}）`;
           if(!left) $('#notes-heading').insertAdjacentHTML('afterend', '<div class="hint">まだありません</div>');
@@ -981,9 +997,9 @@ async function openPerson(id){
         if(!confirm('整形前の文章に戻します。よろしいですか？')) return;
         btn.disabled = true;
         try{
-          const n = notes.find(x=>x.id===btn.dataset.noteId);
+          const n = notes.find(x=>sameId(x.id, btn.dataset.noteId));
           await dbRetry(()=>supa.from('exp_notes').update({text:n.text_before_cleanup, text_before_cleanup:null}).eq('id', btn.dataset.noteId), '発言の復元');
-          spotlightDirty = true;
+          sheetDirty = true;
           openPerson(openId);
         }catch(e){
           alert('戻せませんでした：'+e.message);
@@ -1018,7 +1034,7 @@ function startNoteEdit(noteEl){
     saveBtn.disabled = true;
     try{
       await dbRetry(()=>supa.from('exp_notes').update({text:nv}).eq('id', id), '発言の更新');
-      spotlightDirty = true;
+      sheetDirty = true;
       openPerson(openId);
     }catch(e){
       alert('保存できませんでした：'+e.message);
@@ -1039,12 +1055,11 @@ function clearUserScopedState(){
   // 即時に取り除く。進行中の取得結果も requestId の不一致で破棄する。
   spotlightRequestId++;
   people = [];
-  personNumbers = new Map();
   spotlightPool = [];
   spotlightCurrentNote = null;
   spotlightLoaded = false;
   spotlightLoadPromise = null;
-  spotlightDirty = false;
+  sheetDirty = false;
   pending = null;
   openId = null;
   searchQuery = '';
@@ -1057,17 +1072,23 @@ function clearUserScopedState(){
   delete $('#spotlight').dataset.pid;
   $('#sp-body').innerHTML = '';
   $('#sheet').classList.remove('show');
+  $('#sh-title').textContent = '';
+  $('#sh-body').innerHTML = '';
   $('#raw').value = '';
   $('#result').classList.remove('show');
+  $('#result').textContent = '';
   $('#preview').classList.remove('show');
   $('#preview').innerHTML = '';
   $('#cleanup-result').classList.remove('show');
+  $('#cleanup-result').textContent = '';
   $('#who').textContent = '';
 }
 
 function refreshSpotlight(){
-  spotlightDirty = false;
-  if(currentUid) loadSpotlight();
+  if(!currentUid) return;
+  // 取得中なら、その結果は変更前の内容なので、終わってからもう一度取り直す
+  if(spotlightLoadPromise) spotlightLoadPromise.then(()=>{ if(currentUid) loadSpotlight(); });
+  else loadSpotlight();
 }
 
 function loadSpotlight(){
@@ -1081,15 +1102,10 @@ function loadSpotlight(){
   }
   spotlightLoadPromise = (async ()=>{
     try{
-      // 一覧を開いていない状態でも同じ No. を出せるよう、番号の基準となる
-      // 全人物の新着順を同時に取得する。
-      const [rows, numberRows] = await Promise.all([
-        selectAll(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation)').order('id'), '振り返りの取得'),
-        selectAll(()=>supa.from('exp_people').select('id,person_number').order('id'), '人物番号の取得')
-      ]);
+      // No. は一覧と同じく、人物ごとに固定した番号を発言と一緒に取得する。
+      const rows = await selectAll(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation,person_number)').order('id'), '振り返りの取得');
       // ログアウト・アカウント切替後に届いた、前の利用者向け通信結果は使わない。
       if(requestId !== spotlightRequestId || !currentUid) return;
-      setPersonNumbers(numberRows);
       spotlightPool = (rows||[]).filter(r => r.exp_people && norm(r.text));
       spotlightLoaded = true;
       showRandomSpotlight();
@@ -1136,7 +1152,7 @@ function showRandomSpotlight(){
   const r = [...person.notes].sort((a,b)=> reviewedAt(a) - reviewedAt(b) || Math.random()-0.5)[0];
   const p = r.exp_people;
   const meta = [p.title, p.affiliation].filter(Boolean).join('／');
-  const number = personNumbers.get(r.person_id);
+  const number = p.person_number;
   $('#sp-body').innerHTML = `<div class="sp-name">${number?`<span class="sp-number">No. ${number}</span>`:''}${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
     ${meta?`<div class="sp-meta">${esc(meta)}</div>`:''}
     <div class="sp-quote">「${esc(r.text)}」</div>
@@ -1174,7 +1190,11 @@ $('#spotlight').onclick = ()=>{
   const pid = $('#spotlight').dataset.pid;
   if(pid) openPerson(pid);
 };
-$('#sp-shuffle').onclick = (e)=>{ e.stopPropagation(); showRandomSpotlight(); };
+$('#sp-shuffle').onclick = (e)=>{
+  e.stopPropagation();
+  // 読み込み中・失敗の表示のときに押しても、枠や再試行ボタンを消さない
+  if(spotlightLoaded) showRandomSpotlight();
+};
 
 /* ---------- PCで開く ---------- */
 $('#btn-copy-url').onclick = async ()=>{
@@ -1211,38 +1231,51 @@ $('#btn-cleanup').onclick = async ()=>{
   const btn = $('#btn-cleanup'); btn.disabled = true;
   const res = $('#cleanup-result'); res.classList.remove('err'); res.classList.add('show');
   res.textContent = '整形中…';
+  const uid = currentUid;
 
   try{
     const notes = await selectAll(()=>supa.from('exp_notes').select('id,person_id,text').order('id'), '発言の取得');
     const byPerson = {};
     notes.forEach(n => { (byPerson[n.person_id] = byPerson[n.person_id] || []).push(n); });
 
-    let done = 0, failed = 0;
+    let done = 0, failed = 0, skipped = 0;
     const total = notes.length;
     for(const pid of Object.keys(byPerson)){
+      // 途中でログアウト・アカウント切替があったら、前の利用者の発言をAIへ送り続けない
+      if(uid !== currentUid) return;
       const group = byPerson[pid];
+      let handled = 0;
       try{
         const parsed = await geminiJson(buildCleanupPrompt(group.map(n=>n.text)), CLEANUP_SCHEMA);
+        if(uid !== currentUid) return;
         const arr = parsed.statements || [];
         // AIが件数を変えて返すと、i番目の文が別の発言に入れ替わってしまうため、その人の分は丸ごと見送る
         if(arr.length !== group.length) throw new Error('整形後の件数が元と合いません');
+        // AIの返事を待つ間に手直し・削除された発言を、古い文の整形結果で上書きしないよう取り直す
+        const latest = await dbRetry(()=>supa.from('exp_notes').select('id,text').eq('person_id', group[0].person_id), '発言の再確認');
+        const latestText = new Map(latest.map(n => [String(n.id), n.text]));
         for(let i=0;i<group.length;i++){
+          if(latestText.get(String(group[i].id)) !== group[i].text){ skipped++; handled++; continue; }
           const nv = norm(arr[i]);
           if(nv && nv !== group[i].text){
             await dbRetry(()=>supa.from('exp_notes').update({text:nv, text_before_cleanup:group[i].text}).eq('id',group[i].id), '発言の更新');
           }
-          done++;
+          done++; handled++;
         }
       }catch(e){
-        failed += group.length;
+        // 途中まで書き込めた分は数え済みなので、残りだけを失敗に数える
+        failed += group.length - handled;
       }
-      res.textContent = `整形中…（${done+failed}/${total}）`;
+      res.textContent = `整形中…（${done+failed+skipped}/${total}）`;
     }
-    res.textContent = failed ? `完了：${done}件を整形しました（${failed}件は失敗）` : `完了：${done}件を整形しました`;
+    if(uid !== currentUid) return;
+    const extra = [failed && `${failed}件は失敗`, skipped && `${skipped}件は整形中に変更されたため見送り`].filter(Boolean);
+    res.textContent = `完了：${done}件を整形しました` + (extra.length ? `（${extra.join('、')}）` : '');
     res.classList.toggle('err', done===0 && failed>0);
     people = [];
     refreshSpotlight();
   }catch(e){
+    if(uid !== currentUid) return;
     res.textContent = '失敗しました：'+e.message; res.classList.add('err');
   }finally{
     btn.disabled = false;
