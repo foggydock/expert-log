@@ -123,6 +123,8 @@
   /* 振り返りスポットライト */
   .spotlight{cursor:pointer}
   .spotlight h3{display:flex;align-items:center;justify-content:space-between}
+  .sp-person{display:flex;align-items:center;gap:10px}
+  .sp-photo{width:42px;height:42px;border-radius:50%;object-fit:cover;flex:0 0 auto;border:1px solid var(--line)}
   .sp-name{font-size:16px;font-weight:600}
   .sp-number{color:var(--accent);font-size:12px;font-weight:600;margin-right:8px}
   .sp-name .rd{font-size:12px;color:var(--muted);font-weight:400;margin-left:6px}
@@ -1153,8 +1155,10 @@ function showRandomSpotlight(){
   const p = r.exp_people;
   const meta = [p.title, p.affiliation].filter(Boolean).join('／');
   const number = p.person_number;
-  $('#sp-body').innerHTML = `<div class="sp-name">${number?`<span class="sp-number">No. ${number}</span>`:''}${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
-    ${meta?`<div class="sp-meta">${esc(meta)}</div>`:''}
+  const photoUrl = safeHttpUrl(p.photo_url);
+  const avatar = isDirectImageUrl(photoUrl) ? `<img class="sp-photo" src="${esc(photoUrl)}" alt="${esc(p.name)}の顔写真" loading="lazy" onerror="this.remove()">` : '';
+  $('#sp-body').innerHTML = `<div class="sp-person">${avatar}<div><div class="sp-name">${number?`<span class="sp-number">No. ${number}</span>`:''}${esc(p.name)}${p.reading?`<span class="rd">${esc(p.reading)}</span>`:''}</div>
+    ${meta?`<div class="sp-meta">${esc(meta)}</div>`:''}</div></div>
     <div class="sp-quote">「${esc(r.text)}」</div>
     <div class="row"><button class="btn-sm" id="sp-mark-read">読んだ</button><span class="hint" id="sp-read-status"></span></div>`;
   spotlightCurrentNote = r;
