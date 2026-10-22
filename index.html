@@ -1105,7 +1105,7 @@ function loadSpotlight(){
   spotlightLoadPromise = (async ()=>{
     try{
       // No. は一覧と同じく、人物ごとに固定した番号を発言と一緒に取得する。
-      const rows = await selectAll(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation,person_number)').order('id'), '振り返りの取得');
+      const rows = await selectAll(()=>supa.from('exp_notes').select('id,text,person_id,last_reviewed_at,exp_people(name,reading,title,affiliation,person_number,photo_url)').order('id'), '振り返りの取得');
       // ログアウト・アカウント切替後に届いた、前の利用者向け通信結果は使わない。
       if(requestId !== spotlightRequestId || !currentUid) return;
       spotlightPool = (rows||[]).filter(r => r.exp_people && norm(r.text));
