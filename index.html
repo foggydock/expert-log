@@ -309,6 +309,8 @@ const SUPABASE_URL = 'https://icxbyltorjpfexmwxzga.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_6qgfCo_xbhbjb3Lr__j-Yg_Y7Zk2yWH';
 const supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const GEMINI_MODEL = 'gemini-2.5-flash';
+// 長い文字起こしでも通常は待てる一方、通信が止まったまま操作不能にならない上限。
+const GEMINI_REQUEST_TIMEOUT_MS = 120000;
 
 const $ = s => document.querySelector(s);
 const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -425,8 +427,17 @@ async function geminiJson(prompt, responseSchema, onRetry){
   for(let attempt=0; attempt<4 && !res; attempt++){
     if(attempt>0){ if(onRetry) onRetry(); await sleep(900*Math.pow(2,attempt-1)); }
     let r;
-    try{ r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body}); }
-    catch(e){ lastErr=e; continue; }
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), GEMINI_REQUEST_TIMEOUT_MS);
+    try{
+      r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body,signal:controller.signal});
+    }catch(e){
+      if(controller.signal.aborted) throw new Error('AIの応答がタイムアウトしました。もう一度お試しください。');
+      lastErr=e;
+      continue;
+    }finally{
+      clearTimeout(timer);
+    }
     if(r.ok){ res = r; break; }
     const t = await r.text().catch(()=>'');
     lastErr = new Error('GEMINI '+r.status+': '+t.slice(0,160));
@@ -882,12 +893,21 @@ function wireProfileEdit(p){
   $('#btn-cancel-profile').onclick = ()=> showProfileView(p);
   $('#btn-save-profile').onclick = async ()=>{
     const btn = $('#btn-save-profile'); btn.disabled = true;
-    // 全角数字も受け付ける。数字として読めない入力は、黙って空欄にせず入れ直してもらう
-    const numOrNull = v => { v = norm(v).normalize('NFKC'); return v ? parseInt(v,10) : null; };
+    // 全角数字も受け付ける。数字以外が混ざる入力を途中まで数値として保存しない。
+    const numOrNull = v => {
+      v = norm(v).normalize('NFKC');
+      return v === '' ? null : (/^\d+$/.test(v) ? Number(v) : NaN);
+    };
     const age = numOrNull($('#ed-age').value);
     const birthYear = numOrNull($('#ed-birth').value);
     if(Number.isNaN(age) || Number.isNaN(birthYear)){
-      alert('年齢・生年は数字で入れてください。');
+      alert('年齢・生年は数字だけで入れてください。');
+      btn.disabled = false;
+      return;
+    }
+    const currentYear = new Date().getFullYear();
+    if((age !== null && (age > 130)) || (birthYear !== null && (birthYear < 1000 || birthYear > currentYear))){
+      alert(`年齢は130歳まで、生年は1000〜${currentYear}年で入れてください。`);
       btn.disabled = false;
       return;
     }
