@@ -30,10 +30,11 @@
   header.app{
     position:sticky;top:0;z-index:5;background:var(--bg);
     padding:14px 16px 10px;border-bottom:1px solid var(--line);
-    display:flex;align-items:baseline;gap:8px
+    display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px
   }
   header.app h1{font-size:19px;margin:0;font-weight:600;letter-spacing:.02em}
   header.app .sub{font-size:12px;color:var(--muted)}
+  header.app .account-summary{flex-basis:100%;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 
   .view{display:none}
   .view.active{display:block}
@@ -223,6 +224,7 @@
 <header class="app">
   <h1>有識者ログ</h1>
   <span class="sub">聞いた人を、貯める</span>
+  <div class="account-summary" id="account-summary" aria-live="polite"></div>
 </header>
 
 <!-- ========== 記録 ========== -->
@@ -331,6 +333,23 @@ const csv = s => norm(s).split(',').filter(Boolean);
 function flash(el){ el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),1800); }
 const errMsg = e => (e._label ? e._label+'に失敗しました：' : 'うまくいきませんでした：') + e.message;
 let currentUid = null;
+let accountCountRequestId = 0;
+let accountEmail = '';
+function showAccountSummary(countText){
+  $('#account-summary').textContent = `ログイン中：${accountEmail}　｜　登録済み：${countText}`;
+}
+async function refreshAccountCount(){
+  const uid = currentUid;
+  if(!uid) return;
+  const requestId = ++accountCountRequestId;
+  try{
+    const { count, error } = await supa.from('exp_people').select('id', { count:'exact', head:true });
+    if(error) throw error;
+    if(uid === currentUid && requestId === accountCountRequestId) showAccountSummary(count == null ? '取得できませんでした' : `${count}人`);
+  }catch(e){
+    if(uid === currentUid && requestId === accountCountRequestId) showAccountSummary('取得できませんでした');
+  }
+}
 let people = [];          // 一覧用にメモリへ持つ
 let activeField = 'すべて';
 let searchQuery = '';
@@ -1076,6 +1095,9 @@ function clearUserScopedState(){
   // ログアウト後や別アカウントへの切替時に、前の利用者の内容を画面・メモリから
   // 即時に取り除く。進行中の取得結果も requestId の不一致で破棄する。
   spotlightRequestId++;
+  accountCountRequestId++;
+  accountEmail = '';
+  $('#account-summary').textContent = '';
   people = [];
   spotlightPool = [];
   spotlightCurrentNote = null;
@@ -1108,6 +1130,7 @@ function clearUserScopedState(){
 
 function refreshSpotlight(){
   if(!currentUid) return;
+  refreshAccountCount();
   // 取得中なら、その結果は変更前の内容なので、終わってからもう一度取り直す
   if(spotlightLoadPromise) spotlightLoadPromise.then(()=>{ if(currentUid) loadSpotlight(); });
   else loadSpotlight();
@@ -1313,8 +1336,11 @@ function authMsg(m, ok){ const el=$('#au-msg'); el.textContent=m; el.classList.t
 // ログイン状態の変化（onAuthStateChange）と起動時の確認（getSession）の両方から呼ぶ
 function applySession(session){
   if(session && session.user){
+    const changed = currentUid !== session.user.id;
     if(currentUid && currentUid !== session.user.id) clearUserScopedState();
     currentUid = session.user.id;
+    accountEmail = session.user.email || 'メールアドレス不明';
+    if(changed){ showAccountSummary('確認中…'); refreshAccountCount(); }
     localStorage.setItem('last_email', session.user.email||'');
     // ログイン後はパスワードを入力欄に残さない（ログアウトした画面に残り、他の人がそのまま入れてしまうため）
     $('#au-pass').value = '';
