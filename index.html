@@ -35,6 +35,7 @@
   header.app h1{font-size:19px;margin:0;font-weight:600;letter-spacing:.02em}
   header.app .sub{font-size:12px;color:var(--muted)}
   header.app .account-summary{flex-basis:100%;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+  header.app .account-retry{font:inherit;color:var(--accent);background:none;border:0;text-decoration:underline;cursor:pointer;padding:0 4px}
 
   .view{display:none}
   .view.active{display:block}
@@ -224,7 +225,7 @@
 <header class="app">
   <h1>有識者ログ</h1>
   <span class="sub">聞いた人を、貯める</span>
-  <div class="account-summary" id="account-summary" aria-live="polite"></div>
+  <div class="account-summary"><span id="account-summary" aria-live="polite"></span><button class="account-retry" id="account-retry" type="button" hidden>人数を再確認</button></div>
 </header>
 
 <!-- ========== 記録 ========== -->
@@ -307,6 +308,7 @@
 <!-- 版を固定し integrity で改ざんを検知する（版を上げるときは integrity も計算し直す） -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js" integrity="sha384-JBR+x8blGwjDRO63aHCGiZMD4VNiTR4ZUGA+N6ZKLf3zNt1fK8IBpcgPaMrxqWBp" crossorigin="anonymous"></script>
 <script>
+try {
 const SUPABASE_URL = 'https://icxbyltorjpfexmwxzga.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_6qgfCo_xbhbjb3Lr__j-Yg_Y7Zk2yWH';
 const supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -342,14 +344,21 @@ async function refreshAccountCount(){
   const uid = currentUid;
   if(!uid) return;
   const requestId = ++accountCountRequestId;
+  $('#account-retry').hidden = true;
+  showAccountSummary('確認中…');
   try{
-    const { count, error } = await supa.from('exp_people').select('id', { count:'exact', head:true });
+    const { count, error } = await withTimeout(supa.from('exp_people').select('id', { count:'exact', head:true }), 6000, '登録人数の取得');
     if(error) throw error;
-    if(uid === currentUid && requestId === accountCountRequestId) showAccountSummary(count == null ? '取得できませんでした' : `${count}人`);
+    if(count == null) throw new Error('人数を取得できませんでした');
+    if(uid === currentUid && requestId === accountCountRequestId) showAccountSummary(`${count}人`);
   }catch(e){
-    if(uid === currentUid && requestId === accountCountRequestId) showAccountSummary('取得できませんでした');
+    if(uid === currentUid && requestId === accountCountRequestId){
+      showAccountSummary('取得できませんでした');
+      $('#account-retry').hidden = false;
+    }
   }
 }
+$('#account-retry').onclick = refreshAccountCount;
 let people = [];          // 一覧用にメモリへ持つ
 let activeField = 'すべて';
 let searchQuery = '';
@@ -1098,6 +1107,7 @@ function clearUserScopedState(){
   accountCountRequestId++;
   accountEmail = '';
   $('#account-summary').textContent = '';
+  $('#account-retry').hidden = true;
   people = [];
   spotlightPool = [];
   spotlightCurrentNote = null;
@@ -1377,6 +1387,18 @@ $('#au-signup').onclick = async ()=>{
   else authMsg('確認メールを送りました。リンクを押したあと、同じメール・パスワードで「ログイン」してください。', true);
 };
 $('#btn-logout').onclick = async ()=>{ await supa.auth.signOut(); };
+} catch (error) {
+  console.error('アプリの起動に失敗しました', error);
+  document.querySelector('#au-msg').textContent = 'アプリを起動できませんでした。通信状態を確認し、ページを再読み込みしてください。';
+  document.querySelector('#au-login').disabled = true;
+  document.querySelector('#au-signup').disabled = true;
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.textContent = 'ページを再読み込み';
+  retry.className = 'primary secondary';
+  retry.onclick = () => location.reload();
+  document.querySelector('#au-msg').after(retry);
+}
 </script>
 </body>
 </html>
